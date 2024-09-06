@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors'
 
 var oenv;
 
@@ -32,14 +33,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const app = new Hono();
 
 // Middleware to set CORS headers
-app.use('*', (c, next) => {
-	// Set CORS headers
-	c.header('Access-Control-Allow-Origin', '*'); // Allow all origins (you may want to restrict this)
-	c.header('Access-Control-Allow-Methods', 'GET, OPTIONS'); // Allowed methods
-  
-	// Proceed to the next middleware or route handler
-	return next();
-});
+app.use('*', cors());
   
 // Handle OPTIONS requests
 app.options('*', (c) => {
