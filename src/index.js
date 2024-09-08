@@ -36,6 +36,13 @@ const app = new Hono();
 // Middleware to set CORS headers
 app.use('*', secureHeaders());
 app.use('*', cors());
+
+app.use('*', (c, next) => {
+  if (c.req.header("Host") !== c.env.HOSTNAME) {
+    if (c.env.DEV_MODE == "true") return next()
+    return c.json({ status: 403, error: true, details: "Hostname does not equal to the expected value" }, 403)
+  }
+})
   
 // Handle OPTIONS requests
 app.options('*', (c) => {
