@@ -56,6 +56,9 @@ app.get('/lyrics/search', async (c) => {
     const data = await generateToken();
     userAccessToken = `Bearer ${data.access_token}`;
     socalitoken = data.access_token;
+  } else {
+    const data2 = await generateToken();
+    socalitoken = data2.access_token;
   }
 
   if (!trackName || !artistName) {
@@ -121,9 +124,10 @@ app.get('/lyrics/search', async (c) => {
           Authorization: `Bearer ${socalitoken}`,
         },
       });
-
+      const lyricsResponse = await lyricsResp.text()
       if (lyricsResp.status === 200) {
-        const lyrics = await lyricsResp.json();
+        if (lyricsResponse == "") continue;
+        const lyrics = JSON.parse(lyricsResponse);
         fullLyricsList.content.push({
           name: track.name,
           artists: track.artists,
@@ -157,6 +161,9 @@ app.get('/lyrics/id', async (c) => {
     const data = await generateToken();
     userAccessToken = `Bearer ${data.access_token}`;
     socalitoken = data.access_token;
+  } else {
+    const data2 = await generateToken();
+    socalitoken = data2.access_token;
   }
 
   if (!trackId && !ids) {
@@ -191,9 +198,11 @@ app.get('/lyrics/id', async (c) => {
         Authorization: `Bearer ${socalitoken}`,
       },
     });
+    const lyricsResponse = await lyricsResp.text();
 
     if (lyricsResp.status === 200) {
-      const lyrics = await lyricsResp.json();
+      if (lyricsResponse == "") return c.json({ error: true, status: 404, details: 'Lyrics Missing' }, 404);
+      const lyrics = JSON.parse(lyricsResponse);
       fullLyricsList.content.push({
         name: data.name,
         artists: data.artists,
@@ -207,14 +216,14 @@ app.get('/lyrics/id', async (c) => {
   }
 
   if (c.req.query("ids")) {
-	return c.json({
-		total: trackIds.length,
-		total_fetched: fullLyricsList.content.length,
-		...fullLyricsList,
-	});
+    return c.json({
+      total: trackIds.length,
+      total_fetched: fullLyricsList.content.length,
+      ...fullLyricsList,
+    });
   } else {
-	const cont = fullLyricsList.content[0];
-	return c.json(cont);
+    const cont = fullLyricsList.content[0];
+    return c.json(cont);
   }
 });
 
