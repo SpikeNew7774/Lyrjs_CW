@@ -131,7 +131,7 @@ const fetchMusixmatchLyrics = async (trackData) => {
   
     const transformedContent = richsyncBody.map(item => {
       const syllables = item.l
-        .filter(lyric => lyric.c.trim() !== "") // Skip lyrics with just a space or empty string
+        //.filter(lyric => lyric.c.trim() !== "") // Skip lyrics with just a space or empty string
         .map(lyric => ({
           Text: lyric.c,
           IsPartOfWord: lyric.o !== 0,
