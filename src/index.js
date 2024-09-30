@@ -53,107 +53,93 @@ app.options('*', (c) => {
 
 // Musixmatch lyric fetch helper
 const fetchMusixmatchLyrics = async (trackData) => {
-    const { name, artists, album, id } = trackData;
-    const artistNames = artists.map(artist => artist.name).join(', ');
-    let mx_token = oenv.MX_USERTOKEN; // Start with the current token
-  
-    const getMusixmatchUrl = (token) =>
-      `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?format=json&namespace=lyrics_richsynched&subtitle_format=mxm&app_id=web-desktop-app-v1.0&q_album=${album.name}&q_artist=${artistNames}&q_track=${name}&track_spotify_id=spotify:track:${id}&usertoken=${token}`;
-  
-    const fetchMusixmatchData = async (token) => {
-      const response = await fetch(getMusixmatchUrl(token), {
-        method: "GET",
-        redirect: "manual",
-        headers: {
-            "Origin": "https://xpui.app.spotify.com"
-        }
-      });
+  const { name, artists, album, id } = trackData;
+  const artistNames = artists.map(artist => artist.name).join(', ');
+  let mx_token = oenv.MX_USERTOKEN; // Start with the current token
 
-      
-      // If there are redirects, fetch a new token
-      if (response.redirected) {
-        console.log('Redirect detected, fetching new token...');
-        
-        // Fetch a new token
-        const tokenResponse = await fetch('https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'insomnia/9.2.0',
-            "Origin": "https://xpui.app.spotify.com"
-          },
-        });
-        const tokenData = await tokenResponse.json();
-        mx_token = tokenData.message.body.user_token;
-        console.log('New Musixmatch token:', mx_token);
-        
-        // Retry Musixmatch request with the new token
-        return await fetchMusixmatchData(mx_token);
+  const getMusixmatchUrl = (token) =>
+    `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?format=json&namespace=lyrics_richsynched&subtitle_format=mxm&app_id=web-desktop-app-v1.0&q_album=${album.name}&q_artist=${artistNames}&q_track=${name}&track_spotify_id=spotify:track:${id}&usertoken=${token}`;
+
+  const fetchMusixmatchData = async (token) => {
+    const response = await fetch(getMusixmatchUrl(token), {
+      method: "GET",
+      redirect: "manual",
+      headers: {
+        "Origin": "https://xpui.app.spotify.com"
       }
-  
-      return await response.json();
-    };
-  
-    let musixmatchData = await fetchMusixmatchData(mx_token);
-  
-    // Check for 401 Unauthorized and fetch a new token if needed
-    if (musixmatchData?.message?.header?.status_code === 401) {
-      console.log('Token expired or unauthorized, fetching new token...');
-  
-      // Fetch a new token
+    });
+
+    if (response.redirected) {
+      console.log('Redirect detected, fetching new token...');
       const tokenResponse = await fetch('https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'User-Agent': 'insomnia/9.2.0',
           "Origin": "https://xpui.app.spotify.com"
-        },
+        }
       });
       const tokenData = await tokenResponse.json();
       mx_token = tokenData.message.body.user_token;
       console.log('New Musixmatch token:', mx_token);
-  
-      // Retry Musixmatch request with the new token
-      musixmatchData = await fetchMusixmatchData(mx_token);
+      return await fetchMusixmatchData(mx_token);
     }
-  
-    const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
-  
-    const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}`;
-    const richsyncRes = await fetch(richsyncUrl, {
-        headers: {
-            "Origin": "https://xpui.app.spotify.com"
-        }
-    });
-    const richsyncData = await richsyncRes.json();
-  
-    const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
-  
-    const transformedContent = richsyncBody.map(item => {
-      const syllables = item.l
-        //.filter(lyric => lyric.c.trim() !== "") // Skip lyrics with just a space or empty string
-        .map(lyric => ({
-          Text: lyric.c,
-          IsPartOfWord: lyric.o !== 0,
-          StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
-          EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
-        }));
-  
-      return {
-        Type: "Vocal",
-        OppositeAligned: false,
-        Lead: {
-          Syllables: syllables,
-          StartTime: item.ts,
-          EndTime: item.te
-        }
-      };
-    });
-    transformedContent.cmtId = commontrackId;
-    return transformedContent;
+
+    return await response.json();
   };
-  
-  
+
+  let musixmatchData = await fetchMusixmatchData(mx_token);
+
+  if (musixmatchData?.message?.header?.status_code === 401) {
+    console.log('Token expired or unauthorized, fetching new token...');
+    const tokenResponse = await fetch('https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'insomnia/9.2.0',
+        "Origin": "https://xpui.app.spotify.com"
+      }
+    });
+    const tokenData = await tokenResponse.json();
+    mx_token = tokenData.message.body.user_token;
+    console.log('New Musixmatch token:', mx_token);
+    musixmatchData = await fetchMusixmatchData(mx_token);
+  }
+
+  const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
+
+  const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}`;
+  const richsyncRes = await fetch(richsyncUrl, {
+    headers: {
+      "Origin": "https://xpui.app.spotify.com"
+    }
+  });
+  const richsyncData = await richsyncRes.json();
+
+  const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
+
+  const transformedContent = richsyncBody.map(item => {
+    const syllables = item.l
+      .map(lyric => ({
+        Text: lyric.c,
+        IsPartOfWord: lyric.o !== 0,
+        StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
+        EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
+      }));
+
+    return {
+      Type: "Vocal",
+      OppositeAligned: false,
+      Lead: {
+        Syllables: syllables,
+        StartTime: item.ts,
+        EndTime: item.te
+      }
+    };
+  });
+  transformedContent.cmtId = commontrackId;
+  return transformedContent;
+};
 
 // Route: /lyrics/id (with multiple IDs support)
 app.get('/lyrics/id', async (c) => {
@@ -163,7 +149,6 @@ app.get('/lyrics/id', async (c) => {
   let userAccessToken = c.req.header('Authorization');
   let socalitoken = '1';
 
-  // Dev mode token generation
   if (c.env.DEV_MODE === 'true') {
     const data = await generateToken();
     userAccessToken = `Bearer ${data.access_token}`;
@@ -207,21 +192,42 @@ app.get('/lyrics/id', async (c) => {
     });
 
     const lyricsResponse = await lyricsResp.text();
-
+    
     if (lyricsResp.status === 200 && lyricsResponse !== "") {
       const lyrics = JSON.parse(lyricsResponse);
-      fullLyricsList.content.push({
-        name: data.name,
-        artists: data.artists,
-        id: data.id,
-        alternative_api: false,
-        ...lyrics,
-      });
+      const type = lyrics.Type || null;
+
+      if (type === "Syllable") {
+        // If Beautiful-Lyrics has "Syllable", just use it
+        fullLyricsList.content.push({
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          alternative_api: false,
+          ...lyrics,
+        });
+      } else {
+        // If not "Syllable", fallback to Musixmatch
+        const transformedLyrics = await fetchMusixmatchLyrics(data);
+        const cmTrackId = transformedLyrics.cmtId;
+        delete transformedLyrics.cmtId;
+
+        fullLyricsList.content.push({
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          alternative_api: true,
+          Type: "Syllable",
+          commontrack_id: cmTrackId,
+          StartTime: transformedLyrics[0].Lead.StartTime,
+          EndTime: transformedLyrics[transformedLyrics.length - 1].Lead.EndTime,
+          Content: transformedLyrics,
+        });
+      }
     } else if (trackIds.length === 1) {
-      // Fallback to Musixmatch if Beautiful-Lyrics API has no lyrics and single ID
       const transformedLyrics = await fetchMusixmatchLyrics(data);
       const cmTrackId = transformedLyrics.cmtId;
-      delete transformedLyrics.cmtId
+      delete transformedLyrics.cmtId;
 
       fullLyricsList.content.push({
         name: data.name,
@@ -236,7 +242,7 @@ app.get('/lyrics/id', async (c) => {
       });
     }
 
-    // Wait for 300ms before processing the next request, experimental option
+    // Wait for 300ms before processing the next request
     await delay(300);
   }
 
@@ -251,6 +257,7 @@ app.get('/lyrics/id', async (c) => {
     return c.json(cont);
   }
 });
+
 
 // Route: /lyrics/search (with bulk support and delay)
 app.get('/lyrics/search', async (c) => {
