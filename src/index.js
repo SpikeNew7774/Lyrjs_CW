@@ -52,7 +52,7 @@ app.options('*', (c) => {
 
 
 // Musixmatch lyric fetch helper
-const fetchMusixmatchLyrics = async (trackData) => {
+const fetchMusixmatchLyrics = async (trackData, c) => {
   const db = oenv.DB; // Assuming the DB binding is passed in the environment
   const { name, artists, album, id } = trackData;
   const artistNames = artists.map(artist => artist.name).join(', ');
@@ -148,7 +148,7 @@ const fetchMusixmatchLyrics = async (trackData) => {
       .filter(lyric => lyric.c.trim() !== "") // Skip lyrics with just a space or empty string
       .map(lyric => ({
         Text: lyric.c,
-        IsPartOfWord: false,//lyric.o !== 0,
+        IsPartOfWord: c.req.header("Origin") === "https://xpui.app.spotify.com" ? false : lyric.o !== 0,
         StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
         EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
       }));
@@ -241,7 +241,7 @@ app.get('/lyrics/id', async (c) => {
         });
       } else {
         // If not "Syllable", fallback to Musixmatch
-        const transformedLyrics = await fetchMusixmatchLyrics(data);
+        const transformedLyrics = await fetchMusixmatchLyrics(data, c);
         if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
         const cmTrackId = transformedLyrics.cmtId;
         delete transformedLyrics.cmtId;
@@ -259,7 +259,7 @@ app.get('/lyrics/id', async (c) => {
         });
       }
     } else if (trackIds.length === 1) {
-      const transformedLyrics = await fetchMusixmatchLyrics(data);
+      const transformedLyrics = await fetchMusixmatchLyrics(data, c);
       if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
       const cmTrackId = transformedLyrics.cmtId;
       delete transformedLyrics.cmtId;
