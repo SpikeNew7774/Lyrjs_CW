@@ -184,10 +184,10 @@ app.get('/lyrics/id', async (c) => {
       const data = await generateToken();
       userAccessToken = `Bearer ${data.access_token}`;
       socalitoken = data.access_token;
-      return;
+    } else {
+      const data2 = await generateToken();
+      socalitoken = data2.access_token;
     }
-    const data2 = await generateToken();
-    socalitoken = data2.access_token;
   }
 
   if (!trackId && !ids) {
