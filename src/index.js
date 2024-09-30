@@ -225,6 +225,9 @@ app.get('/lyrics/id', async (c) => {
         artists: data.artists,
         id: data.id,
         alternative_api: true,
+        Type: "Syllable",
+        StartTime: transformedLyrics[0].Lead.StartTime,
+        EndTime: transformedLyrics[transformedLyrics.length - 1].Lead.EndTime,
         Content: transformedLyrics,
       });
     }
