@@ -149,7 +149,7 @@ const fetchMusixmatchLyrics = async (trackData) => {
         }
       };
     });
-  
+    transformedContent.cmtId = commontrackId;
     return transformedContent;
   };
   
@@ -219,13 +219,17 @@ app.get('/lyrics/id', async (c) => {
       });
     } else if (trackIds.length === 1) {
       // Fallback to Musixmatch if Beautiful-Lyrics API has no lyrics and single ID
-      const transformedLyrics = await fetchMusixmatchLyrics(data);
+      const preTransformedLyrics = await fetchMusixmatchLyrics(data);
+      const cmTrackId = preTransformedLyrics.cmtId;
+      delete preTransformedLyrics.cmtId
+
       fullLyricsList.content.push({
         name: data.name,
         artists: data.artists,
         id: data.id,
         alternative_api: true,
         Type: "Syllable",
+        commontrack_id: cmTrackId,
         StartTime: transformedLyrics[0].Lead.StartTime,
         EndTime: transformedLyrics[transformedLyrics.length - 1].Lead.EndTime,
         Content: transformedLyrics,
