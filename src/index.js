@@ -1,31 +1,31 @@
 import { Hono } from 'hono';
-import { cors } from 'hono/cors'
-import { secureHeaders } from 'hono/secure-headers'
+import { cors } from 'hono/cors';
+import { secureHeaders } from 'hono/secure-headers';
 
 var oenv;
 
 const generateToken = async () => {
-	try {
-	  const response = await fetch('https://accounts.spotify.com/api/token', {
-		method: 'POST',
-		headers: {
-		  'Content-Type': 'application/x-www-form-urlencoded',
-		},
-		body: new URLSearchParams({
-		  grant_type: 'client_credentials',
-		  client_id: oenv.SPT_CLIENT_ID, // Assuming SPT_CLIENT_ID is accessible in your environment
-		  client_secret: oenv.SPT_CLIENT_SECRET, // Assuming SPT_CLIENT_SECRET is accessible in your environment
-		}),
-	  });
-  
-	  const data = await response.json();
-	  if (!response.ok) {
-		throw new Error(data.error || 'Token generation failed');
-	  }
-	  return data;
-	} catch (error) {
-	  throw new Error(`Error generating token: ${error.message}`);
-	}
+  try {
+    const response = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: oenv.SPT_CLIENT_ID, // Assuming SPT_CLIENT_ID is accessible in your environment
+        client_secret: oenv.SPT_CLIENT_SECRET, // Assuming SPT_CLIENT_SECRET is accessible in your environment
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Token generation failed');
+    }
+    return data;
+  } catch (error) {
+    throw new Error(`Error generating token: ${error.message}`);
+  }
 };
 
 // Helper function for delay
@@ -39,126 +39,125 @@ app.use('*', cors());
 
 app.use('*', (c, next) => {
   if (c.req.header("Host") !== c.env.HOSTNAME) {
-    if (c.env.DEV_MODE == "true") return next()
-    return c.json({ status: 403, error: true, details: "Hostname does not equal to the expected value" }, 403)
+    if (c.env.DEV_MODE == "true") return next();
+    return c.json({ status: 403, error: true, details: "Hostname does not equal to the expected value" }, 403);
   }
-  return next()
-})
-  
+  return next();
+});
+
 // Handle OPTIONS requests
 app.options('*', (c) => {
-	return c.text('OK', 200); // Respond to the preflight request
+  return c.text('OK', 200); // Respond to the preflight request
 });
 
-// Route: /lyrics/search (with bulk support and delay)
-app.get('/lyrics/search', async (c) => {
-  oenv = c.env
-  const trackName = c.req.query('track');
-  const artistName = c.req.query('artist');
-  const bulk = c.req.query('bulk') === 'true';
-  let userAccessToken = c.req.header('Authorization');
-  let socalitoken = '1';
 
-  // Dev mode token generation
-  if (c.env.DEV_MODE === 'true') {
-    const data = await generateToken();
-    userAccessToken = `Bearer ${data.access_token}`;
-    socalitoken = data.access_token;
-  } else {
-    const data2 = await generateToken();
-    socalitoken = data2.access_token;
-  }
+// Musixmatch lyric fetch helper
+const fetchMusixmatchLyrics = async (trackData) => {
+    const { name, artists, album, id } = trackData;
+    const artistNames = artists.map(artist => artist.name).join(', ');
+    let mx_token = oenv.MX_USERTOKEN; // Start with the current token
+  
+    const getMusixmatchUrl = (token) =>
+      `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?format=json&namespace=lyrics_richsynched&subtitle_format=mxm&app_id=web-desktop-app-v1.0&q_album=${album.name}&q_artist=${artistNames}&q_track=${name}&track_spotify_id=spotify:track:${id}&usertoken=${token}`;
+  
+    const fetchMusixmatchData = async (token) => {
+      const response = await fetch(getMusixmatchUrl(token), {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+            "Origin": "https://xpui.app.spotify.com"
+        }
+      });
 
-  if (!trackName || !artistName) {
-    return c.json({ error: true, details: 'Track or Artist query missing.', status: 403 }, 403);
-  }
-
-  const fetchingUrl = `https://api.spotify.com/v1/search?q=track:${trackName} artist:${artistName}&type=track${!bulk ? '&limit=1' : ''}`;
-  const resp = await fetch(fetchingUrl, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: userAccessToken || 'none',
-    },
-  });
-
-  if (resp.status !== 200) {
-    return c.json({ error: true, status: resp.status, details: 'Spotify API Error' }, resp.status);
-  }
-
-  const data = await resp.json();
-  if (data.tracks.total === 0) {
-    return c.json({ error: true, details: 'No Tracks Found', status: 404 }, 404);
-  }
-
-  if (!bulk) {
-    // Single track search
-    const trackId = data.tracks.items[0].id;
-    const lyricsResp = await fetch(`https://beautiful-lyrics.socalifornian.live/lyrics/${trackId}`, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'insomnia/9.2.0',
-        Origin: 'https://xpui.app.spotify.com',
-        Referer: 'https://xpui.app.spotify.com/',
-        Authorization: `Bearer ${socalitoken}`,
-      },
-    });
-
-    if (lyricsResp.status === 404) {
-      return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
-    }
-
-    const lyrics = await lyricsResp.json();
-    return c.json({
-      error: false,
-      name: data.tracks.items[0].name,
-      artists: data.tracks.items[0].artists,
-      id: trackId,
-      ...lyrics,
-    });
-  } else {
-    // Bulk search with 250ms delay
-    const tracks = data.tracks.items;
-    const fullLyricsList = { error: false, bulk: true, content: [] };
-
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i];
-      const lyricsResp = await fetch(`https://beautiful-lyrics.socalifornian.live/lyrics/${track.id}`, {
+      
+      // If there are redirects, fetch a new token
+      if (response.redirected) {
+        console.log('Redirect detected, fetching new token...');
+        
+        // Fetch a new token
+        const tokenResponse = await fetch('https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'insomnia/9.2.0',
+            "Origin": "https://xpui.app.spotify.com"
+          },
+        });
+        const tokenData = await tokenResponse.json();
+        mx_token = tokenData.message.body.user_token;
+        console.log('New Musixmatch token:', mx_token);
+        
+        // Retry Musixmatch request with the new token
+        return await fetchMusixmatchData(mx_token);
+      }
+  
+      return await response.json();
+    };
+  
+    let musixmatchData = await fetchMusixmatchData(mx_token);
+  
+    // Check for 401 Unauthorized and fetch a new token if needed
+    if (musixmatchData?.message?.header?.status_code === 401) {
+      console.log('Token expired or unauthorized, fetching new token...');
+  
+      // Fetch a new token
+      const tokenResponse = await fetch('https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0', {
         method: 'GET',
         headers: {
+          'Content-Type': 'application/json',
           'User-Agent': 'insomnia/9.2.0',
-          Origin: 'https://xpui.app.spotify.com',
-          Referer: 'https://xpui.app.spotify.com/',
-          Authorization: `Bearer ${socalitoken}`,
+          "Origin": "https://xpui.app.spotify.com"
         },
       });
-      const lyricsResponse = await lyricsResp.text()
-      if (lyricsResp.status === 200) {
-        if (lyricsResponse == "") continue;
-        const lyrics = JSON.parse(lyricsResponse);
-        fullLyricsList.content.push({
-          name: track.name,
-          artists: track.artists,
-          id: track.id,
-          ...lyrics,
-        });
-      }
-
-      // Wait for 250ms before processing the next request
-      await delay(250);
+      const tokenData = await tokenResponse.json();
+      mx_token = tokenData.message.body.user_token;
+      console.log('New Musixmatch token:', mx_token);
+  
+      // Retry Musixmatch request with the new token
+      musixmatchData = await fetchMusixmatchData(mx_token);
     }
-
-    return c.json({
-      total: data.tracks.total,
-      total_fetched: fullLyricsList.content.length,
-      ...fullLyricsList,
+  
+    const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
+  
+    const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}`;
+    const richsyncRes = await fetch(richsyncUrl, {
+        headers: {
+            "Origin": "https://xpui.app.spotify.com"
+        }
     });
-  }
-});
+    const richsyncData = await richsyncRes.json();
+  
+    const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
+  
+    const transformedContent = richsyncBody.map(item => {
+      const syllables = item.l
+        .filter(lyric => lyric.c.trim() !== "") // Skip lyrics with just a space or empty string
+        .map(lyric => ({
+          Text: lyric.c,
+          IsPartOfWord: lyric.o !== 0,
+          StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
+          EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
+        }));
+  
+      return {
+        Type: "Vocal",
+        OppositeAligned: false,
+        Lead: {
+          Syllables: syllables,
+          StartTime: item.ts,
+          EndTime: item.te
+        }
+      };
+    });
+  
+    return transformedContent;
+  };
+  
+  
 
-// Route: /lyrics/id (with multiple IDs support and delay)
+// Route: /lyrics/id (with multiple IDs support)
 app.get('/lyrics/id', async (c) => {
-  oenv = c.env
+  oenv = c.env;
   const trackId = c.req.query('id');
   const ids = c.req.query('ids')?.split(',');
   let userAccessToken = c.req.header('Authorization');
@@ -206,21 +205,32 @@ app.get('/lyrics/id', async (c) => {
         Authorization: `Bearer ${socalitoken}`,
       },
     });
+
     const lyricsResponse = await lyricsResp.text();
 
-    if (lyricsResp.status === 200) {
-      if (lyricsResponse == "") return c.json({ error: true, status: 404, details: 'Lyrics Missing' }, 404);
+    if (lyricsResp.status === 200 && lyricsResponse !== "") {
       const lyrics = JSON.parse(lyricsResponse);
       fullLyricsList.content.push({
         name: data.name,
         artists: data.artists,
         id: data.id,
+        alternative_api: false,
         ...lyrics,
+      });
+    } else if (trackIds.length === 1) {
+      // Fallback to Musixmatch if Beautiful-Lyrics API has no lyrics and single ID
+      const transformedLyrics = await fetchMusixmatchLyrics(data);
+      fullLyricsList.content.push({
+        name: data.name,
+        artists: data.artists,
+        id: data.id,
+        alternative_api: true,
+        Content: transformedLyrics,
       });
     }
 
-    // Wait for 250ms before processing the next request
-    await delay(250);
+    // Wait for 300ms before processing the next request, experimental option
+    await delay(300);
   }
 
   if (c.req.query("ids")) {
@@ -234,6 +244,114 @@ app.get('/lyrics/id', async (c) => {
     return c.json(cont);
   }
 });
+
+// Route: /lyrics/search (with bulk support and delay)
+app.get('/lyrics/search', async (c) => {
+    oenv = c.env
+    const trackName = c.req.query('track');
+    const artistName = c.req.query('artist');
+  
+    const bulk = c.req.query('bulk') === 'true';
+    let userAccessToken = c.req.header('Authorization');
+    let socalitoken = '1';
+  
+    // Dev mode token generation
+    if (c.env.DEV_MODE === 'true') {
+      const data = await generateToken();
+      userAccessToken = `Bearer ${data.access_token}`;
+      socalitoken = data.access_token;
+    } else {
+      const data2 = await generateToken();
+      socalitoken = data2.access_token;
+    }
+  
+    if (!trackName || !artistName) {
+      return c.json({ error: true, details: 'Track or Artist query missing.', status: 403 }, 403);
+    }
+  
+    const fetchingUrl = `https://api.spotify.com/v1/search?q=track:${trackName} artist:${artistName}&type=track${!bulk ? '&limit=1' : ''}`;
+    const resp = await fetch(fetchingUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: userAccessToken || 'none',
+      },
+    });
+  
+    if (resp.status !== 200) {
+      return c.json({ error: true, status: resp.status, details: 'Spotify API Error' }, resp.status);
+    }
+  
+    const data = await resp.json();
+    if (data.tracks.total === 0) {
+      return c.json({ error: true, details: 'No Tracks Found', status: 404 }, 404);
+    }
+  
+    if (!bulk) {
+      // Single track search
+      const trackId = data.tracks.items[0].id;
+      const lyricsResp = await fetch(`https://beautiful-lyrics.socalifornian.live/lyrics/${trackId}`, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'insomnia/9.2.0',
+          Origin: 'https://xpui.app.spotify.com',
+          Referer: 'https://xpui.app.spotify.com/',
+          Authorization: `Bearer ${socalitoken}`,
+        },
+      });
+  
+      if (lyricsResp.status === 404) {
+        return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
+      }
+  
+      const lyrics = await lyricsResp.json();
+      return c.json({
+        error: false,
+        name: data.tracks.items[0].name,
+        artists: data.tracks.items[0].artists,
+        id: trackId,
+        ...lyrics,
+      });
+    } else {
+      // Bulk search with 250ms delay
+      const tracks = data.tracks.items;
+      const fullLyricsList = { error: false, bulk: true, content: [] };
+  
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
+        const lyricsResp = await fetch(`https://beautiful-lyrics.socalifornian.live/lyrics/${track.id}`, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'insomnia/9.2.0',
+            Origin: 'https://xpui.app.spotify.com',
+            Referer: 'https://xpui.app.spotify.com/',
+            Authorization: `Bearer ${socalitoken}`,
+          },
+        });
+        const lyricsResponse = await lyricsResp.text()
+        if (lyricsResp.status === 200) {
+          if (lyricsResponse == "") continue;
+          const lyrics = JSON.parse(lyricsResponse);
+          fullLyricsList.content.push({
+            name: track.name,
+            artists: track.artists,
+            id: track.id,
+            ...lyrics,
+          });
+        }
+  
+        // Wait for 300ms before processing the next request, Having an EXPERIMENTAL Option
+        await delay(300);
+      }
+  
+      return c.json({
+        total: data.tracks.total,
+        total_fetched: fullLyricsList.content.length,
+        ...fullLyricsList,
+      });
+    }
+  });
+  
 
 // Route: /bin
 app.get('/bin', (c) => c.text('bin => bon'));
