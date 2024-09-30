@@ -219,9 +219,9 @@ app.get('/lyrics/id', async (c) => {
       });
     } else if (trackIds.length === 1) {
       // Fallback to Musixmatch if Beautiful-Lyrics API has no lyrics and single ID
-      const preTransformedLyrics = await fetchMusixmatchLyrics(data);
-      const cmTrackId = preTransformedLyrics.cmtId;
-      delete preTransformedLyrics.cmtId
+      const transformedLyrics = await fetchMusixmatchLyrics(data);
+      const cmTrackId = transformedLyrics.cmtId;
+      delete transformedLyrics.cmtId
 
       fullLyricsList.content.push({
         name: data.name,
