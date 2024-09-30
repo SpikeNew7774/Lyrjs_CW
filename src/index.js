@@ -181,14 +181,8 @@ app.get('/lyrics/id', async (c) => {
     userAccessToken = `Bearer ${data.access_token}`;
     socalitoken = data.access_token;
   } else {
-    if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
-      const data = await generateToken();
-      userAccessToken = `Bearer ${data.access_token}`;
-      socalitoken = data.access_token;
-    } else {
       const data2 = await generateToken();
       socalitoken = data2.access_token;
-    }
   }
 
   if (!trackId && !ids) {
