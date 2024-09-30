@@ -144,14 +144,27 @@ const fetchMusixmatchLyrics = async (trackData, c) => {
   const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
 
   const transformedContent = richsyncBody.map(item => {
-    const syllables = item.l
-      .filter(lyric => lyric.c.trim() !== "") // Skip lyrics with just a space or empty string
-      .map(lyric => ({
-        Text: lyric.c,
-        IsPartOfWord: c.req.header("Origin") === "https://xpui.app.spotify.com" ? false : lyric.o !== 0,
-        StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
-        EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
-      }));
+    let syllables;
+
+    if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
+      syllables = item.l
+        .filter(lyric => lyric.c.trim() !== "") // Skip lyrics with just a space or empty string
+        .map(lyric => ({
+          Text: lyric.c,
+          IsPartOfWord: false,
+          StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
+          EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
+        }));
+    } else {
+      syllables = item.l
+        .map(lyric => ({
+          Text: lyric.c,
+          IsPartOfWord: lyric.o !== 0,
+          StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
+          EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
+        }));
+    }
+    
 
     return {
       Type: "Vocal",
