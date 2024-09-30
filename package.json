@@ -10,6 +10,7 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
+    "dev:public": "wrangler dev --remote",
     "start": "wrangler dev",
     "test": "vitest"
   },

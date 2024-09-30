@@ -53,13 +53,27 @@ app.options('*', (c) => {
 
 // Musixmatch lyric fetch helper
 const fetchMusixmatchLyrics = async (trackData) => {
+  const db = oenv.DB; // Assuming the DB binding is passed in the environment
   const { name, artists, album, id } = trackData;
   const artistNames = artists.map(artist => artist.name).join(', ');
-  let mx_token = oenv.MX_USERTOKEN; // Start with the current token
 
+  // Helper to get Musixmatch URL
   const getMusixmatchUrl = (token) =>
     `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?format=json&namespace=lyrics_richsynched&subtitle_format=mxm&app_id=web-desktop-app-v1.0&q_album=${album.name}&q_artist=${artistNames}&q_track=${name}&track_spotify_id=spotify:track:${id}&usertoken=${token}`;
 
+  // Fetch the token from the D1 DB
+  const getTokenFromDB = async () => {
+    const result = await db.prepare('SELECT token FROM tokens WHERE id = ?').bind('musixmatch').first();
+    return result?.token || null;
+  };
+
+  // Save or update the token in the D1 DB
+  const saveTokenToDB = async (token) => {
+    await db.prepare('INSERT INTO tokens (id, token) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET token = excluded.token')
+      .bind('musixmatch', token).run();
+  };
+
+  // Fetch Musixmatch data helper
   const fetchMusixmatchData = async (token) => {
     const response = await fetch(getMusixmatchUrl(token), {
       method: "GET",
@@ -71,27 +85,16 @@ const fetchMusixmatchLyrics = async (trackData) => {
 
     if (response.redirected) {
       console.log('Redirect detected, fetching new token...');
-      const tokenResponse = await fetch('https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'insomnia/9.2.0',
-          "Origin": "https://xpui.app.spotify.com"
-        }
-      });
-      const tokenData = await tokenResponse.json();
-      mx_token = tokenData.message.body.user_token;
-      console.log('New Musixmatch token:', mx_token);
-      return await fetchMusixmatchData(mx_token);
+      const newToken = await fetchNewMusixmatchToken();
+      await saveTokenToDB(newToken);
+      return await fetchMusixmatchData(newToken);
     }
 
     return await response.json();
   };
 
-  let musixmatchData = await fetchMusixmatchData(mx_token);
-
-  if (musixmatchData?.message?.header?.status_code === 401) {
-    console.log('Token expired or unauthorized, fetching new token...');
+  // Fetch new Musixmatch token
+  const fetchNewMusixmatchToken = async () => {
     const tokenResponse = await fetch('https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0', {
       method: 'GET',
       headers: {
@@ -101,8 +104,26 @@ const fetchMusixmatchLyrics = async (trackData) => {
       }
     });
     const tokenData = await tokenResponse.json();
-    mx_token = tokenData.message.body.user_token;
-    console.log('New Musixmatch token:', mx_token);
+    console.log("TokenData", tokenData)
+    return tokenData.message.body.user_token;
+  };
+
+  // Main logic
+  let mx_token = await getTokenFromDB(); // Check if token exists in the DB
+  if (!mx_token) {
+    console.log('No Musixmatch token in DB, fetching new token...');
+    mx_token = await fetchNewMusixmatchToken();
+    await saveTokenToDB(mx_token); // Save new token to the DB
+  }
+
+  let musixmatchData = await fetchMusixmatchData(mx_token);
+
+  console.log("musixmatchData", musixmatchData)
+
+  if (musixmatchData?.message?.header?.status_code === 401) {
+    console.log('Token expired, fetching new token...');
+    mx_token = await fetchNewMusixmatchToken();
+    await saveTokenToDB(mx_token); // Save new token to the DB
     musixmatchData = await fetchMusixmatchData(mx_token);
   }
 
@@ -115,6 +136,10 @@ const fetchMusixmatchLyrics = async (trackData) => {
     }
   });
   const richsyncData = await richsyncRes.json();
+
+  if (richsyncData?.message?.header?.status_code === 404) {
+    return { return_status: 404 }
+  }
 
   const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
 
@@ -140,6 +165,7 @@ const fetchMusixmatchLyrics = async (trackData) => {
   transformedContent.cmtId = commontrackId;
   return transformedContent;
 };
+
 
 // Route: /lyrics/id (with multiple IDs support)
 app.get('/lyrics/id', async (c) => {
@@ -209,6 +235,7 @@ app.get('/lyrics/id', async (c) => {
       } else {
         // If not "Syllable", fallback to Musixmatch
         const transformedLyrics = await fetchMusixmatchLyrics(data);
+        if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
         const cmTrackId = transformedLyrics.cmtId;
         delete transformedLyrics.cmtId;
 
@@ -226,6 +253,7 @@ app.get('/lyrics/id', async (c) => {
       }
     } else if (trackIds.length === 1) {
       const transformedLyrics = await fetchMusixmatchLyrics(data);
+      if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
       const cmTrackId = transformedLyrics.cmtId;
       delete transformedLyrics.cmtId;
 
