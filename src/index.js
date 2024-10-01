@@ -148,10 +148,12 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
     // Fallback to "macro.subtitles.get" data
     const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
 
-    const transformedContent = subtitles.map(item => ({
-      Text: item.text,
-      StartTime: item.time.total, // Convert to total seconds
-      EndTime: item.time.total + 0.5 // Assuming 0.5 seconds per line for simplicity
+    const transformedContent = subtitles.map((item, index, arr) => ({
+        Text: item.text,
+        StartTime: item.time.total, // Convert to total seconds
+        EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
+        Type: "Vocal",
+        OppositeAligned: false
     }));
 
     return {
@@ -291,14 +293,14 @@ app.get('/lyrics/id', async (c) => {
     } else if (trackIds.length === 1) {
       const transformedLyrics = await fetchMusixmatchLyrics(data, c, { Type: "NOTUSE" });
       if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
-
+      console.log("Tr Lyrics", transformedLyrics)
       fullLyricsList.content.push({
         name: data.name,
         artists: data.artists,
         id: data.id,
         alternative_api: true,
-        StartTime: transformedLyrics.Content[0].Lead.StartTime,
-        EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
+        StartTime: transformedLyrics.Content[0].StartTime,
+        EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].EndTime,
         ...transformedLyrics,
       });
     }
