@@ -52,7 +52,7 @@ app.options('*', (c) => {
 
 
 // Musixmatch lyric fetch helper
-const fetchMusixmatchLyrics = async (trackData, c) => {
+const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   const db = oenv.DB; // Assuming the DB binding is passed in the environment
   const { name, artists, album, id } = trackData;
   const artistNames = artists.map(artist => artist.name).join(', ');
@@ -104,7 +104,7 @@ const fetchMusixmatchLyrics = async (trackData, c) => {
       }
     });
     const tokenData = await tokenResponse.json();
-    console.log("TokenData", tokenData)
+    console.log("TokenData", tokenData);
     return tokenData.message.body.user_token;
   };
 
@@ -118,7 +118,7 @@ const fetchMusixmatchLyrics = async (trackData, c) => {
 
   let musixmatchData = await fetchMusixmatchData(mx_token);
 
-  console.log("musixmatchData", musixmatchData)
+  console.log("musixmatchData", musixmatchData);
 
   if (musixmatchData?.message?.header?.status_code === 401) {
     console.log('Token expired, fetching new token...');
@@ -138,7 +138,26 @@ const fetchMusixmatchLyrics = async (trackData, c) => {
   const richsyncData = await richsyncRes.json();
 
   if (richsyncData?.message?.header?.status_code === 404) {
-    return { return_status: 404 }
+    if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
+      if (blData?.Type === "Line" || blData?.Type === "Static" && blData) {
+          return { blData: blData, from: "bl" }
+      } else {
+        return { return_status: 404 }
+      }
+    }
+    // Fallback to "macro.subtitles.get" data
+    const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
+
+    const transformedContent = subtitles.map(item => ({
+      Text: item.text,
+      StartTime: item.time.total, // Convert to total seconds
+      EndTime: item.time.total + 0.5 // Assuming 0.5 seconds per line for simplicity
+    }));
+
+    return {
+      Type: "Line",
+      Content: transformedContent
+    };
   }
 
   const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
@@ -164,7 +183,6 @@ const fetchMusixmatchLyrics = async (trackData, c) => {
           EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
         }));
     }
-    
 
     return {
       Type: "Vocal",
@@ -176,9 +194,14 @@ const fetchMusixmatchLyrics = async (trackData, c) => {
       }
     };
   });
-  transformedContent.cmtId = commontrackId;
-  return transformedContent;
+
+  return {
+    Type: "Syllable",
+    commontrack_id: commontrackId,
+    Content: transformedContent
+  };
 };
+
 
 
 // Route: /lyrics/id (with multiple IDs support)
@@ -248,39 +271,35 @@ app.get('/lyrics/id', async (c) => {
         });
       } else {
         // If not "Syllable", fallback to Musixmatch
-        const transformedLyrics = await fetchMusixmatchLyrics(data, c);
+        const transformedLyrics = await fetchMusixmatchLyrics(data, c, JSON.parse(lyricsResponse));
         if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
-        const cmTrackId = transformedLyrics.cmtId;
-        delete transformedLyrics.cmtId;
+
+        const additData = transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
+            alternative_api: true,
+            StartTime: transformedLyrics.Content[0].Lead.StartTime,
+            EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
+            ...transformedLyrics
+        } : { alternative_api: false, ...transformedLyrics.blData }
 
         fullLyricsList.content.push({
           name: data.name,
           artists: data.artists,
           id: data.id,
-          alternative_api: true,
-          Type: "Syllable",
-          commontrack_id: cmTrackId,
-          StartTime: transformedLyrics[0].Lead.StartTime,
-          EndTime: transformedLyrics[transformedLyrics.length - 1].Lead.EndTime,
-          Content: transformedLyrics,
+          ...additData
         });
       }
     } else if (trackIds.length === 1) {
-      const transformedLyrics = await fetchMusixmatchLyrics(data, c);
+      const transformedLyrics = await fetchMusixmatchLyrics(data, c, { Type: "NOTUSE" });
       if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
-      const cmTrackId = transformedLyrics.cmtId;
-      delete transformedLyrics.cmtId;
 
       fullLyricsList.content.push({
         name: data.name,
         artists: data.artists,
         id: data.id,
         alternative_api: true,
-        Type: "Syllable",
-        commontrack_id: cmTrackId,
-        StartTime: transformedLyrics[0].Lead.StartTime,
-        EndTime: transformedLyrics[transformedLyrics.length - 1].Lead.EndTime,
-        Content: transformedLyrics,
+        StartTime: transformedLyrics.Content[0].Lead.StartTime,
+        EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
+        ...transformedLyrics,
       });
     }
 
