@@ -156,6 +156,8 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
     return {
       Type: "Line",
+      alternative_api: true,
+      commontrack_id: commontrackId,
       Content: transformedContent
     };
   }
@@ -197,6 +199,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
   return {
     Type: "Syllable",
+    alternative_api: true,
     commontrack_id: commontrackId,
     Content: transformedContent
   };
@@ -274,11 +277,10 @@ app.get('/lyrics/id', async (c) => {
         const transformedLyrics = await fetchMusixmatchLyrics(data, c, JSON.parse(lyricsResponse));
         if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
         const additData = transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
-            alternative_api: true,
             StartTime: transformedLyrics.Content[0].Lead.StartTime,
             EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
             ...transformedLyrics
-        } : { alternative_api: false, ...transformedLyrics }
+        } : { ...transformedLyrics.blData, alternative_api: false }
 
         fullLyricsList.content.push({
           name: data.name,
