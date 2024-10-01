@@ -118,8 +118,6 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
   let musixmatchData = await fetchMusixmatchData(mx_token);
 
-  console.log("musixmatchData", musixmatchData);
-
   if (musixmatchData?.message?.header?.status_code === 401) {
     console.log('Token expired, fetching new token...');
     mx_token = await fetchNewMusixmatchToken();
@@ -139,8 +137,8 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
   if (richsyncData?.message?.header?.status_code === 404) {
     if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
-      if (blData?.Type === "Line" || blData?.Type === "Static" && blData) {
-          return { blData: blData, from: "bl" }
+      if (blData && blData?.Type !== "NOTUSE") {
+          return { blData, from: "bl" }
       } else {
         return { return_status: 404 }
       }
@@ -275,13 +273,12 @@ app.get('/lyrics/id', async (c) => {
         // If not "Syllable", fallback to Musixmatch
         const transformedLyrics = await fetchMusixmatchLyrics(data, c, JSON.parse(lyricsResponse));
         if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
-
         const additData = transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
             alternative_api: true,
             StartTime: transformedLyrics.Content[0].Lead.StartTime,
             EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
             ...transformedLyrics
-        } : { alternative_api: false, ...transformedLyrics.blData }
+        } : { alternative_api: false, ...transformedLyrics }
 
         fullLyricsList.content.push({
           name: data.name,
@@ -293,7 +290,6 @@ app.get('/lyrics/id', async (c) => {
     } else if (trackIds.length === 1) {
       const transformedLyrics = await fetchMusixmatchLyrics(data, c, { Type: "NOTUSE" });
       if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
-      console.log("Tr Lyrics", transformedLyrics)
       fullLyricsList.content.push({
         name: data.name,
         artists: data.artists,
