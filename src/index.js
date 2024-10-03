@@ -263,7 +263,7 @@ app.get('/lyrics/id', async (c) => {
       const lyrics = JSON.parse(lyricsResponse);
       const type = lyrics.Type || null;
 
-      if (type === "Syllable") {
+      if (type === "Syllable" || type === "Line") {
         // If Beautiful-Lyrics has "Syllable", just use it
         fullLyricsList.content.push({
           name: data.name,
