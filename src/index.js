@@ -210,7 +210,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 // Route: /lyrics/id (with multiple IDs support)
 app.get('/lyrics/id', async (c) => {
   oenv = c.env;
-  const forceMxMatch = c.req.query("forcemx") === "true";
+  const forceMxMatch = c.req.query("forcemx") !== "true";
   const trackId = c.req.query('id');
   const ids = c.req.query('ids')?.split(',');
   let userAccessToken = c.req.header('Authorization');
@@ -264,7 +264,7 @@ app.get('/lyrics/id', async (c) => {
       const lyrics = JSON.parse(lyricsResponse);
       const type = lyrics.Type || null;
 
-      if (!forceMxMatch || type === "Syllable") { // Changed my Mind: || type === "Line"
+      if (forceMxMatch || type === "Syllable") { // Changed my Mind: || type === "Line"
         // If Beautiful-Lyrics has "Syllable", just use it
         fullLyricsList.content.push({
           name: data.name,
