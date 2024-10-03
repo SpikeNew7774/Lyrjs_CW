@@ -281,18 +281,34 @@ app.get('/lyrics/id', async (c) => {
         // If not "Syllable", fallback to Musixmatch
         const transformedLyrics = await fetchMusixmatchLyrics(data, c, JSON.parse(lyricsResponse));
         if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
-        const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
-            StartTime: transformedLyrics.Content[0].Lead.StartTime,
-            EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
-            ...transformedLyrics
-        } : { ...transformedLyrics.blData, alternative_api: false }
 
-        fullLyricsList.content.push({
-          name: data.name,
-          artists: data.artists,
-          id: data.id,
-          ...additData
-        });
+        if (transformedLyrics.Type === "Line") {
+          const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
+            StartTime: transformedLyrics.Content[0].StartTime,
+            EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].EndTime,
+            ...transformedLyrics
+          } : { ...transformedLyrics.blData, alternative_api: false }
+
+          fullLyricsList.content.push({
+            name: data.name,
+            artists: data.artists,
+            id: data.id,
+            ...additData
+          });
+        } else {
+          const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
+              StartTime: transformedLyrics.Content[0].Lead.StartTime,
+              EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
+              ...transformedLyrics
+          } : { ...transformedLyrics.blData, alternative_api: false }
+
+          fullLyricsList.content.push({
+            name: data.name,
+            artists: data.artists,
+            id: data.id,
+            ...additData
+          });
+        }
       }
     } else if (trackIds.length === 1) {
       const transformedLyrics = await fetchMusixmatchLyrics(data, c, { Type: "NOTUSE" });
