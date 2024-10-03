@@ -126,8 +126,10 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   }
 
   const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
+  const trackDuration = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length;
+  const subtitleLength = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_length;
 
-  const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}`;
+  const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}&f_subtitle_length=${subtitleLength}&q_duration=${trackDuration}`;
   const richsyncRes = await fetch(richsyncUrl, {
     headers: {
       "Origin": "https://xpui.app.spotify.com"
