@@ -176,5 +176,6 @@ script.js
 src/index.js_backup
 src/idk
 temp/
+lyrics_builder/
 
 *.sql

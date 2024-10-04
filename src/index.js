@@ -353,15 +353,52 @@ app.get('/lyrics/id', async (c) => {
           return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
         }
       }
-      fullLyricsList.content.push({
-        name: data.name,
-        artists: data.artists,
-        id: data.id,
-        alternative_api: true,
-        StartTime: transformedLyrics.Content[0].Lead.StartTime ?? transformedLyrics.Content[0].StartTime,
-        EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime ?? transformedLyrics.Content[transformedLyrics.Content.length - 1].EndTime,
-        ...transformedLyrics,
-      });
+
+      if (transformedLyrics?.return_status === 404) {
+        if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
+          return c.text("");
+        } else {
+          return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
+        }
+      }
+      if (transformedLyrics.Type === "Line" || transformedLyrics?.blData?.Type === "Line") {
+        const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
+          StartTime: transformedLyrics.Content[0].StartTime,
+          EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].EndTime,
+          ...transformedLyrics
+        } : { ...transformedLyrics.blData, alternative_api: false }
+
+        fullLyricsList.content.push({
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          ...additData
+        });
+      } else if (transformedLyrics.Type === "Syllable" || transformedLyrics?.blData?.Type === "Syllable") {
+        const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
+            StartTime: transformedLyrics.Content[0].Lead.StartTime,
+            EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
+            ...transformedLyrics
+        } : { ...transformedLyrics.blData, alternative_api: false }
+
+        fullLyricsList.content.push({
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          ...additData
+        });
+      } else if (transformedLyrics.Type === "Static" || transformedLyrics?.blData?.Type === "Static") {
+        const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
+          ...transformedLyrics
+        } : { ...transformedLyrics.blData, alternative_api: false }
+
+        fullLyricsList.content.push({
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          ...additData
+        });
+      }
     }
 
     // Wait for 300ms before processing the next request
