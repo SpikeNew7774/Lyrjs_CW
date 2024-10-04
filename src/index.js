@@ -51,23 +51,23 @@ app.options('*', (c) => {
 });
 
 
+// Check for lyrics in the D1 DB by Spotify ID (function outside of fetchMusixmatchLyrics)
+const checkLyricsInDB = async (spotifyId, db) => {
+  const result = await db.prepare('SELECT lyrics_content FROM lyrics WHERE spotify_id = ?').bind(spotifyId).first();
+  if (result && result.lyrics_content) {
+    return JSON.parse(result.lyrics_content);
+  }
+  return null;
+};
+
 // Musixmatch lyric fetch helper
 const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   const db = oenv.DB; // Assuming the DB binding is passed in the environment
   const { name, artists, album, id } = trackData;
   const artistNames = artists.map(artist => artist.name).join(', ');
 
-  // Check for lyrics in the D1 DB by Spotify ID
-  const checkLyricsInDB = async (spotifyId) => {
-    const result = await db.prepare('SELECT lyrics_content FROM lyrics WHERE spotify_id = ?').bind(spotifyId).first();
-    if (result && result.lyrics_content) {
-      return JSON.parse(result.lyrics_content);
-    }
-    return null;
-  };
-
   // Try to find lyrics in the DB first
-  const existingLyrics = await checkLyricsInDB(id);
+  const existingLyrics = await checkLyricsInDB(id, db);
   if (existingLyrics) {
     console.log('Found lyrics in DB, returning...');
     return existingLyrics; // Return the parsed lyrics if found
@@ -155,16 +155,16 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
   if (richsyncData?.message?.header?.status_code === 404) {
     if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
-      console.log("Im here!")
+      console.log("No lyrics found in Musixmatch");
       if (blData && blData?.Type !== "NOTUSE") {
-        console.log("Now Im here!")
+        console.log("Using Beautiful-Lyrics data");
         return { blData, from: "bl" };
       } else {
         return { return_status: 404 };
       }
     }
 
-    const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? `{"none": true}` : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
+    const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? {"none": true} : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
 
     if (subtitles.none !== true) {
       const transformedContent = subtitles.map((item, index, arr) => ({
@@ -227,6 +227,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 };
 
 
+
 // Route: /lyrics/id (with multiple IDs support)
 app.get('/lyrics/id', async (c) => {
   oenv = c.env;
@@ -268,6 +269,51 @@ app.get('/lyrics/id', async (c) => {
     }
 
     const data = await resp.json();
+
+    const dbData = await checkLyricsInDB();
+    if (dbData != null) {
+      if (dbData.Type === "Line" || dbData?.blData?.Type === "Line") {
+        const additData = {
+          StartTime: dbData.Content[0].StartTime,
+          EndTime: dbData.Content[dbData.Content.length - 1].EndTime,
+          ...dbData
+        }
+
+        fullLyricsList.content.push({
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          ...additData
+        });
+      } else if (dbData.Type === "Syllable" || dbData?.blData?.Type === "Syllable") {
+        const additData = {
+            StartTime: dbData.Content[0].Lead.StartTime,
+            EndTime: dbData.Content[dbData.Content.length - 1].Lead.EndTime,
+            ...dbData
+        }
+
+        fullLyricsList.content.push({
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          ...additData
+        });
+      } else if (dbData.Type === "Static" || dbData?.blData?.Type === "Static") {
+        const additData = {
+          ...dbData
+        }
+
+        fullLyricsList.content.push({
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          ...additData
+        });
+      }
+      responseSend();
+      return;
+    }
+
     const lyricsResp = await fetch(`https://beautiful-lyrics.socalifornian.live/lyrics/${id}`, {
       method: 'GET',
       headers: {
@@ -405,16 +451,19 @@ app.get('/lyrics/id', async (c) => {
     await delay(300);
   }
 
-  if (c.req.query("ids")) {
-    return c.json({
-      total: trackIds.length,
-      total_fetched: fullLyricsList.content.length,
-      ...fullLyricsList,
-    });
-  } else {
-    const cont = fullLyricsList.content[0];
-    return c.json(cont);
+  function responseSend() {
+    if (c.req.query("ids")) {
+      return c.json({
+        total: trackIds.length,
+        total_fetched: fullLyricsList.content.length,
+        ...fullLyricsList,
+      });
+    } else {
+      const cont = fullLyricsList.content[0];
+      return c.json(cont);
+    }
   }
+  responseSend()
 });
 
 
