@@ -310,8 +310,16 @@ app.get('/lyrics/id', async (c) => {
           ...additData
         });
       }
-      responseSend();
-      return;
+      if (c.req.query("ids")) {
+        return c.json({
+          total: trackIds.length,
+          total_fetched: fullLyricsList.content.length,
+          ...fullLyricsList,
+        });
+      } else {
+        const cont = fullLyricsList.content[0];
+        return c.json(cont);
+      }
     }
 
     const lyricsResp = await fetch(`https://beautiful-lyrics.socalifornian.live/lyrics/${id}`, {
@@ -451,7 +459,6 @@ app.get('/lyrics/id', async (c) => {
     await delay(300);
   }
 
-  function responseSend() {
     if (c.req.query("ids")) {
       return c.json({
         total: trackIds.length,
@@ -462,8 +469,6 @@ app.get('/lyrics/id', async (c) => {
       const cont = fullLyricsList.content[0];
       return c.json(cont);
     }
-  }
-  responseSend()
 });
 
 
