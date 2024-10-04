@@ -57,6 +57,22 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   const { name, artists, album, id } = trackData;
   const artistNames = artists.map(artist => artist.name).join(', ');
 
+  // Check for lyrics in the D1 DB by Spotify ID
+  const checkLyricsInDB = async (spotifyId) => {
+    const result = await db.prepare('SELECT lyrics_content FROM lyrics WHERE spotify_id = ?').bind(spotifyId).first();
+    if (result && result.lyrics_content) {
+      return JSON.parse(result.lyrics_content);
+    }
+    return null;
+  };
+
+  // Try to find lyrics in the DB first
+  const existingLyrics = await checkLyricsInDB(id);
+  if (existingLyrics) {
+    console.log('Found lyrics in DB, returning...');
+    return existingLyrics; // Return the parsed lyrics if found
+  }
+
   // Helper to get Musixmatch URL
   const getMusixmatchUrl = (token) =>
     `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?format=json&namespace=lyrics_richsynched&subtitle_format=mxm&app_id=web-desktop-app-v1.0&q_album=${album.name}&q_artist=${artistNames}&q_track=${name}&track_spotify_id=spotify:track:${id}&usertoken=${token}`;
@@ -125,7 +141,6 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
     musixmatchData = await fetchMusixmatchData(mx_token);
   }
 
-
   const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
   const trackDuration = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length;
   const subtitleLength = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? null : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_length;
@@ -137,36 +152,37 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
     }
   });
   const richsyncData = await richsyncRes.json();
-    if (richsyncData?.message?.header?.status_code === 404) {
-      if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
-        console.log("Im here!")
-        if (blData && blData?.Type !== "NOTUSE") {
-          console.log("Now Im here!")
-            return { blData, from: "bl" }
-        } else {
-          return { return_status: 404 }
-        }
-      }
-      // Fallback to "macro.subtitles.get" data
-      const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? `{"none": true}` : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
-  
-      if (subtitles.none !== true) {
-        const transformedContent = subtitles.map((item, index, arr) => ({
-          Text: item.text,
-          StartTime: item.time.total, // Convert to total seconds
-          EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
-          Type: "Vocal",
-          OppositeAligned: false
-        }));
-    
-        return {
-          Type: "Line",
-          alternative_api: true,
-          commontrack_id: commontrackId,
-          Content: transformedContent
-        };
+
+  if (richsyncData?.message?.header?.status_code === 404) {
+    if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
+      console.log("Im here!")
+      if (blData && blData?.Type !== "NOTUSE") {
+        console.log("Now Im here!")
+        return { blData, from: "bl" };
+      } else {
+        return { return_status: 404 };
       }
     }
+
+    const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? `{"none": true}` : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
+
+    if (subtitles.none !== true) {
+      const transformedContent = subtitles.map((item, index, arr) => ({
+        Text: item.text,
+        StartTime: item.time.total,
+        EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
+        Type: "Vocal",
+        OppositeAligned: false
+      }));
+
+      return {
+        Type: "Line",
+        alternative_api: true,
+        commontrack_id: commontrackId,
+        Content: transformedContent
+      };
+    }
+  }
 
   const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
 
@@ -175,7 +191,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
     if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
       syllables = item.l
-        .filter(lyric => lyric.c.trim() !== "") // Skip lyrics with just a space or empty string
+        .filter(lyric => lyric.c.trim() !== "")
         .map(lyric => ({
           Text: lyric.c,
           IsPartOfWord: false,
@@ -183,13 +199,12 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
           EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
         }));
     } else {
-      syllables = item.l
-        .map(lyric => ({
-          Text: lyric.c,
-          IsPartOfWord: lyric.o !== 0,
-          StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
-          EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
-        }));
+      syllables = item.l.map(lyric => ({
+        Text: lyric.c,
+        IsPartOfWord: lyric.o !== 0,
+        StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
+        EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
+      }));
     }
 
     return {
@@ -210,7 +225,6 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
     Content: transformedContent
   };
 };
-
 
 
 // Route: /lyrics/id (with multiple IDs support)
@@ -291,8 +305,7 @@ app.get('/lyrics/id', async (c) => {
             return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
           }
         }
-
-        if (transformedLyrics.Type === "Line" || transformedLyrics.blData.Type === "Line") {
+        if (transformedLyrics.Type === "Line" || transformedLyrics?.blData?.Type === "Line") {
           const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
             StartTime: transformedLyrics.Content[0].StartTime,
             EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].EndTime,
@@ -305,7 +318,7 @@ app.get('/lyrics/id', async (c) => {
             id: data.id,
             ...additData
           });
-        } else if (transformedLyrics.Type === "Syllable" || transformedLyrics.blData.Type === "Syllable") {
+        } else if (transformedLyrics.Type === "Syllable" || transformedLyrics?.blData?.Type === "Syllable") {
           const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
               StartTime: transformedLyrics.Content[0].Lead.StartTime,
               EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
@@ -318,7 +331,7 @@ app.get('/lyrics/id', async (c) => {
             id: data.id,
             ...additData
           });
-        } else if (transformedLyrics.Type === "Static" || transformedLyrics.blData.Type === "Static") {
+        } else if (transformedLyrics.Type === "Static" || transformedLyrics?.blData?.Type === "Static") {
           const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
             ...transformedLyrics
           } : { ...transformedLyrics.blData, alternative_api: false }

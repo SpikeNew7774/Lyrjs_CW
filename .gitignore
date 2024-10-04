@@ -175,5 +175,6 @@ wrangler.toml
 script.js
 src/index.js_backup
 src/idk
+temp/
 
-sql.sql
+*.sql
