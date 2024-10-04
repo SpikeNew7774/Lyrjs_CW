@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { secureHeaders } from 'hono/secure-headers';
 
 var oenv;
 
@@ -34,7 +33,6 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const app = new Hono();
 
 // Middleware to set CORS headers
-app.use('*', secureHeaders());
 app.use('*', cors());
 
 app.use('*', (c, next) => {
