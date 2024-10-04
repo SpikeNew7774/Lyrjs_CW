@@ -125,44 +125,48 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
     musixmatchData = await fetchMusixmatchData(mx_token);
   }
 
+
   const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
   const trackDuration = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length;
-  const subtitleLength = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_length;
+  const subtitleLength = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? null : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_length;
 
-  const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}&f_subtitle_length=${subtitleLength}&q_duration=${trackDuration}`;
+  const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}${subtitleLength != null ? `&f_subtitle_length=${subtitleLength}` : ""}&q_duration=${trackDuration}`;
   const richsyncRes = await fetch(richsyncUrl, {
     headers: {
       "Origin": "https://xpui.app.spotify.com"
     }
   });
   const richsyncData = await richsyncRes.json();
-
-  if (richsyncData?.message?.header?.status_code === 404) {
-    if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
-      if (blData && blData?.Type !== "NOTUSE") {
-          return { blData, from: "bl" }
-      } else {
-        return { return_status: 404 }
+    if (richsyncData?.message?.header?.status_code === 404) {
+      if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
+        console.log("Im here!")
+        if (blData && blData?.Type !== "NOTUSE") {
+          console.log("Now Im here!")
+            return { blData, from: "bl" }
+        } else {
+          return { return_status: 404 }
+        }
+      }
+      // Fallback to "macro.subtitles.get" data
+      const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? `{"none": true}` : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
+  
+      if (subtitles.none !== true) {
+        const transformedContent = subtitles.map((item, index, arr) => ({
+          Text: item.text,
+          StartTime: item.time.total, // Convert to total seconds
+          EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
+          Type: "Vocal",
+          OppositeAligned: false
+        }));
+    
+        return {
+          Type: "Line",
+          alternative_api: true,
+          commontrack_id: commontrackId,
+          Content: transformedContent
+        };
       }
     }
-    // Fallback to "macro.subtitles.get" data
-    const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
-
-    const transformedContent = subtitles.map((item, index, arr) => ({
-        Text: item.text,
-        StartTime: item.time.total, // Convert to total seconds
-        EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
-        Type: "Vocal",
-        OppositeAligned: false
-    }));
-
-    return {
-      Type: "Line",
-      alternative_api: true,
-      commontrack_id: commontrackId,
-      Content: transformedContent
-    };
-  }
 
   const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
 
@@ -280,9 +284,15 @@ app.get('/lyrics/id', async (c) => {
       } else {
         // If not "Syllable", fallback to Musixmatch
         const transformedLyrics = await fetchMusixmatchLyrics(data, c, JSON.parse(lyricsResponse));
-        if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
+        if (transformedLyrics?.return_status === 404) {
+          if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
+            return c.text("");
+          } else {
+            return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
+          }
+        }
 
-        if (transformedLyrics.Type === "Line") {
+        if (transformedLyrics.Type === "Line" || transformedLyrics.blData.Type === "Line") {
           const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
             StartTime: transformedLyrics.Content[0].StartTime,
             EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].EndTime,
@@ -295,7 +305,7 @@ app.get('/lyrics/id', async (c) => {
             id: data.id,
             ...additData
           });
-        } else {
+        } else if (transformedLyrics.Type === "Syllable" || transformedLyrics.blData.Type === "Syllable") {
           const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
               StartTime: transformedLyrics.Content[0].Lead.StartTime,
               EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime,
@@ -308,18 +318,35 @@ app.get('/lyrics/id', async (c) => {
             id: data.id,
             ...additData
           });
+        } else if (transformedLyrics.Type === "Static" || transformedLyrics.blData.Type === "Static") {
+          const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
+            ...transformedLyrics
+          } : { ...transformedLyrics.blData, alternative_api: false }
+
+          fullLyricsList.content.push({
+            name: data.name,
+            artists: data.artists,
+            id: data.id,
+            ...additData
+          });
         }
       }
     } else if (trackIds.length === 1) {
       const transformedLyrics = await fetchMusixmatchLyrics(data, c, { Type: "NOTUSE" });
-      if (transformedLyrics?.return_status === 404) return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
+      if (transformedLyrics?.return_status === 404) {
+        if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
+          return c.text("");
+        } else {
+          return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
+        }
+      }
       fullLyricsList.content.push({
         name: data.name,
         artists: data.artists,
         id: data.id,
         alternative_api: true,
-        StartTime: transformedLyrics.Content[0].StartTime,
-        EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].EndTime,
+        StartTime: transformedLyrics.Content[0].Lead.StartTime ?? transformedLyrics.Content[0].StartTime,
+        EndTime: transformedLyrics.Content[transformedLyrics.Content.length - 1].Lead.EndTime ?? transformedLyrics.Content[transformedLyrics.Content.length - 1].EndTime,
         ...transformedLyrics,
       });
     }
