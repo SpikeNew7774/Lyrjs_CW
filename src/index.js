@@ -66,12 +66,12 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   const { name, artists, album, id } = trackData;
   const artistNames = artists.map(artist => artist.name).join(', ');
 
-  // Try to find lyrics in the DB first
+  /* // Try to find lyrics in the DB first
   const existingLyrics = await checkLyricsInDB(id, db);
   if (existingLyrics) {
     console.log('Found lyrics in DB, returning...');
     return existingLyrics; // Return the parsed lyrics if found
-  }
+  } */
 
   // Helper to get Musixmatch URL
   const getMusixmatchUrl = (token) =>
@@ -270,9 +270,9 @@ app.get('/lyrics/id', async (c) => {
 
     const data = await resp.json();
 
-    const dbData = await checkLyricsInDB();
+    const dbData = await checkLyricsInDB(data.id, c.env.DB);
     if (dbData != null) {
-      if (dbData.Type === "Line" || dbData?.blData?.Type === "Line") {
+      if (dbData.Type === "Line") {
         const additData = {
           StartTime: dbData.Content[0].StartTime,
           EndTime: dbData.Content[dbData.Content.length - 1].EndTime,
@@ -285,7 +285,7 @@ app.get('/lyrics/id', async (c) => {
           id: data.id,
           ...additData
         });
-      } else if (dbData.Type === "Syllable" || dbData?.blData?.Type === "Syllable") {
+      } else if (dbData.Type === "Syllable") {
         const additData = {
             StartTime: dbData.Content[0].Lead.StartTime,
             EndTime: dbData.Content[dbData.Content.length - 1].Lead.EndTime,
@@ -298,7 +298,7 @@ app.get('/lyrics/id', async (c) => {
           id: data.id,
           ...additData
         });
-      } else if (dbData.Type === "Static" || dbData?.blData?.Type === "Static") {
+      } else if (dbData.Type === "Static") {
         const additData = {
           ...dbData
         }
