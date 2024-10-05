@@ -285,7 +285,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
 
 // Route: /lyrics/id (with multiple IDs support)
-app.get('/lyrics/id', cacheMiddleware(10), async (c) => {
+app.get('/lyrics/id', cacheMiddleware(300), async (c) => {
   oenv = c.env;
   const forceMxMatch = c.req.query("forcemx") !== "true";
   const trackId = c.req.query('id');
