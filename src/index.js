@@ -4,6 +4,64 @@ import { secureHeaders } from 'hono/secure-headers';
 
 var oenv;
 
+// Middleware for Cloudflare caching
+const cacheMiddleware = (cacheDuration) => {
+	return async (c, next) => {
+	  const cache = caches.default;
+	  const cacheKey = new Request(c.req.url, c.req);
+  
+	  // Check if the request is already cached
+	  const cachedResponse = await cache.match(cacheKey);
+  
+	  if (cachedResponse) {
+		// If a cached response is found, serve it and set X-Cache header
+		//c.header('CF-Cache-Status', 'HIT');
+		return cachedResponse;
+	  }
+  
+	  // Continue to the next middleware or route handler if no cache is found
+	  await next();
+  
+	  // If the response status is successful (200) and cacheable, store it in cache
+	  if (c.res && c.res.status === 200) {
+		// Use tee() to split the body stream so it can be used both for caching and response
+		const [responseForClient, responseForCache] = c.res.body.tee();
+  
+		// Create a response for caching
+		const responseToCache = new Response(responseForCache, {
+		  status: c.res.status,
+		  headers: c.res.headers,
+		});
+  
+		// Set Cache-Control headers for caching duration
+		responseToCache.headers.set('Cache-Control', `public, max-age=${cacheDuration}`);
+  
+		// Cache the response without consuming the original body
+		await cache.put(cacheKey, responseToCache);
+  
+		// Replace the body of the response with the cloned one for sending it to the client
+		c.res = new Response(responseForClient, {
+		  status: c.res.status,
+		  headers: c.res.headers,
+		});
+  
+		// Set X-Cache as MISS since it wasn't in cache earlier
+		c.header('CF-Cache-Status', 'MISS');
+	  }
+	};
+};
+
+// Function to clear the cache for a specific URL
+const clearCache = async (url) => {
+	const cache = caches.default;
+	const cacheKey = new Request(url);
+
+	// Attempt to delete the cache entry for the given URL
+	const deleted = await cache.delete(cacheKey);
+
+	return deleted;
+};
+
 const generateToken = async () => {
   try {
     const response = await fetch('https://accounts.spotify.com/api/token', {
@@ -229,7 +287,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
 
 // Route: /lyrics/id (with multiple IDs support)
-app.get('/lyrics/id', async (c) => {
+app.get('/lyrics/id', cacheMiddleware(300), async (c) => {
   oenv = c.env;
   const forceMxMatch = c.req.query("forcemx") !== "true";
   const trackId = c.req.query('id');
