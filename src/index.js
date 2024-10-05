@@ -152,6 +152,11 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   const richsyncData = await richsyncRes.json();
 
   if (richsyncData?.message?.header?.status_code === 404) {
+    if (blData && blData?.Type !== "NOTUSE") {
+      console.log("Using Beautiful-Lyrics data");
+      return { blData, from: "bl" };
+    }
+
     if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
       console.log("No lyrics found in Musixmatch");
       if (blData && blData?.Type !== "NOTUSE") {
