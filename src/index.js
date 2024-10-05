@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { secureHeaders } from 'hono/secure-headers';
 
 var oenv;
 
@@ -16,7 +15,7 @@ const cacheMiddleware = (cacheDuration) => {
 	  if (cachedResponse) {
 		// If a cached response is found, serve it and set X-Cache header
 		//c.header('CF-Cache-Status', 'HIT');
-		return cachedResponse;
+		  return cachedResponse;
 	  }
   
 	  // Continue to the next middleware or route handler if no cache is found
@@ -34,7 +33,7 @@ const cacheMiddleware = (cacheDuration) => {
 		});
   
 		// Set Cache-Control headers for caching duration
-		responseToCache.headers.set('Cache-Control', `public, max-age=${cacheDuration}`);
+		//responseToCache.headers.set('Cache-Control', `public, max-age=${cacheDuration}`);
   
 		// Cache the response without consuming the original body
 		await cache.put(cacheKey, responseToCache);
@@ -46,7 +45,7 @@ const cacheMiddleware = (cacheDuration) => {
 		});
   
 		// Set X-Cache as MISS since it wasn't in cache earlier
-		c.header('CF-Cache-Status', 'MISS');
+		//c.header('CF-Cache-Status', 'MISS');
 	  }
 	};
 };
@@ -92,7 +91,6 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const app = new Hono();
 
 // Middleware to set CORS headers
-app.use('*', secureHeaders());
 app.use('*', cors());
 
 app.use('*', (c, next) => {
@@ -287,7 +285,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
 
 // Route: /lyrics/id (with multiple IDs support)
-app.get('/lyrics/id', cacheMiddleware(300), async (c) => {
+app.get('/lyrics/id', cacheMiddleware(10), async (c) => {
   oenv = c.env;
   const forceMxMatch = c.req.query("forcemx") !== "true";
   const trackId = c.req.query('id');
