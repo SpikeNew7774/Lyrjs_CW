@@ -154,7 +154,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   const richsyncData = await richsyncRes.json();
 
   if (richsyncData?.message?.header?.status_code === 404) {
-    if (blData && blData?.Type !== "NOTUSE") {
+    if (blData && blData?.Type === "Line") {
       console.log("Using Beautiful-Lyrics data");
       return { blData, from: "bl" };
     }
