@@ -5,7 +5,7 @@ This is the Cloudflare Workers repository. If you want the older Node JS Version
 Check out the [![GitHub Wiki Link](https://img.shields.io/badge/wiki-documentation-forestgreen?style=for-the-badge)](https://github.com/SpikeNew7774/Lyrjs/wiki) for all the information
 
 # Status
-https://uptime.spikerko.org
+https://status.spikerko.org
 
 ### This may not be accurate, due to github caching these badges. Click on the link above for further info.
 \
