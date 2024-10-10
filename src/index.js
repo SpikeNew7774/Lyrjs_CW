@@ -37,6 +37,7 @@ const app = new Hono();
 app.use('*', secureHeaders());
 app.use('*', cors());
 
+
 app.use('*', (c, next) => {
   if (c.req.header("Host") !== c.env.HOSTNAME) {
     if (c.env.DEV_MODE == "true") return next();
@@ -49,6 +50,40 @@ app.use('*', (c, next) => {
 app.options('*', (c) => {
   return c.text('OK', 200); // Respond to the preflight request
 });
+
+
+const rateLimitSkiplist = [
+  "https://splay.spikerko.org",
+  "https://xpui.app.spotify.com"
+];
+
+async function rateLimit(c, next) {
+  if (c.req.header("Origin") && rateLimitSkiplist.includes(c.req.header("Origin"))) {
+    return next()
+  }
+
+	const ipAddress = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") 
+	
+  const { success } = await c.env.lyricsRateLimit.limit({ key: ipAddress })
+	if (!success) {
+		return c.json({ error: true, details: 'You\'ve exceeded the rate limit of 1 request per 10 seconds. Wait atleast 10 seconds before an another request', status: 429 }, 429);
+	}
+	return next()
+}
+
+async function rateSearchLimit(c, next) {
+  if (c.req.header("Origin") && rateLimitSkiplist.includes(c.req.header("Origin"))) {
+    return next()
+  }
+
+	const ipAddress = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") 
+	
+  const { success } = await c.env.lyricsSearchRtLimit.limit({ key: ipAddress })
+	if (!success) {
+		return c.json({ error: true, details: 'You\'ve exceeded the rate limit of 1 request per 10 seconds. Wait atleast 10 seconds before an another request', status: 429 }, 429);
+	}
+	return next()
+}
 
 
 // Check for lyrics in the D1 DB by Spotify ID (function outside of fetchMusixmatchLyrics)
@@ -234,11 +269,20 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
 
 // Route: /lyrics/id (with multiple IDs support)
-app.get('/lyrics/id', async (c) => {
+app.get('/lyrics/id', rateLimit, async (c) => {
   oenv = c.env;
   const forceMxMatch = c.req.query("forcemx") !== "true";
   const trackId = c.req.query('id');
   const ids = c.req.query('ids')?.split(',');
+
+  if (trackId && ids) {
+    return c.json({ error: true, details: 'You can\'t have a trackId and also ids. Use only one.', status: 403 }, 403);
+  }
+
+  if (ids?.length > 100) {
+    return c.json({ error: true, details: 'More than 100 tracks can\'t be fetched at one time', status: 403 }, 403);
+  }
+
   let userAccessToken = c.req.header('Authorization');
   let socalitoken = '1';
 
@@ -343,7 +387,7 @@ app.get('/lyrics/id', async (c) => {
       const lyrics = JSON.parse(lyricsResponse);
       const type = lyrics.Type || null;
 
-      const blCheck = !forceMxMatch ? false : type === "Syllable";
+      const blCheck = !forceMxMatch ? false : type === "Syllable" || type === "Line";
 
       if (blCheck) { // Changed my Mind: || type === "Line"
         // If Beautiful-Lyrics has "Syllable", just use it
@@ -403,7 +447,7 @@ app.get('/lyrics/id', async (c) => {
           });
         }
       }
-    } else if (trackIds.length === 1) {
+    } else {
       const transformedLyrics = await fetchMusixmatchLyrics(data, c, { Type: "NOTUSE" });
       if (transformedLyrics?.return_status === 404) {
         if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
@@ -478,7 +522,7 @@ app.get('/lyrics/id', async (c) => {
 
 
 // Route: /lyrics/search (with bulk support and delay)
-app.get('/lyrics/search', async (c) => {
+app.get('/lyrics/search', rateSearchLimit, async (c) => {
     oenv = c.env
     const trackName = c.req.query('track');
     const artistName = c.req.query('artist');
@@ -584,6 +628,10 @@ app.get('/lyrics/search', async (c) => {
     }
   });
   
+app.get('/', (c) => {
+  return c.redirect("https://github.com/SpikeNew7774/Lyrjs_CW")
+})
+
 
 // Route: /bin
 app.get('/bin', (c) => c.text('bin => bon'));
