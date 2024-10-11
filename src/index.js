@@ -523,110 +523,147 @@ app.get('/lyrics/id', rateLimit, async (c) => {
 
 // Route: /lyrics/search (with bulk support and delay)
 app.get('/lyrics/search', rateSearchLimit, async (c) => {
-    oenv = c.env
-    const trackName = c.req.query('track');
-    const artistName = c.req.query('artist');
-  
-    const bulk = c.req.query('bulk') === 'true';
-    let userAccessToken = c.req.header('Authorization');
-    let socalitoken = '1';
-  
-    // Dev mode token generation
-    if (c.env.DEV_MODE === 'true') {
-      const data = await generateToken();
-      userAccessToken = `Bearer ${data.access_token}`;
-      socalitoken = data.access_token;
-    } else {
-      const data2 = await generateToken();
-      socalitoken = data2.access_token;
-    }
-  
-    if (!trackName || !artistName) {
-      return c.json({ error: true, details: 'Track or Artist query missing.', status: 403 }, 403);
-    }
-  
-    const fetchingUrl = `https://api.spotify.com/v1/search?q=track:${trackName} artist:${artistName}&type=track${!bulk ? '&limit=1' : ''}`;
-    const resp = await fetch(fetchingUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: userAccessToken || 'none',
-      },
-    });
-  
-    if (resp.status !== 200) {
-      return c.json({ error: true, status: resp.status, details: 'Spotify API Error' }, resp.status);
-    }
-  
-    const data = await resp.json();
-    if (data.tracks.total === 0) {
-      return c.json({ error: true, details: 'No Tracks Found', status: 404 }, 404);
-    }
-  
-    if (!bulk) {
-      // Single track search
-      const trackId = data.tracks.items[0].id;
-      const lyricsResp = await fetch(`https://beautiful-lyrics.socalifornian.live/lyrics/${trackId}`, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'insomnia/9.2.0',
-          Origin: 'https://xpui.app.spotify.com',
-          Referer: 'https://xpui.app.spotify.com/',
-          Authorization: `Bearer ${socalitoken}`,
-        },
-      });
-  
-      if (lyricsResp.status === 404) {
-        return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
-      }
-  
-      const lyrics = await lyricsResp.json();
-      return c.json({
-        error: false,
-        name: data.tracks.items[0].name,
-        artists: data.tracks.items[0].artists,
-        id: trackId,
-        ...lyrics,
-      });
-    } else {
-      // Bulk search with 250ms delay
-      const tracks = data.tracks.items;
-      const fullLyricsList = { error: false, bulk: true, content: [] };
-  
-      for (let i = 0; i < tracks.length; i++) {
-        const track = tracks[i];
-        const lyricsResp = await fetch(`https://beautiful-lyrics.socalifornian.live/lyrics/${track.id}`, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'insomnia/9.2.0',
-            Origin: 'https://xpui.app.spotify.com',
-            Referer: 'https://xpui.app.spotify.com/',
-            Authorization: `Bearer ${socalitoken}`,
-          },
-        });
-        const lyricsResponse = await lyricsResp.text()
-        if (lyricsResp.status === 200) {
-          if (lyricsResponse == "") continue;
-          const lyrics = JSON.parse(lyricsResponse);
-          fullLyricsList.content.push({
-            name: track.name,
-            artists: track.artists,
-            id: track.id,
-            ...lyrics,
-          });
-        }
-  
-        // Wait for 300ms before processing the next request, Having an EXPERIMENTAL Option
-        await delay(300);
-      }
-  
-      return c.json({
-        total: data.tracks.total,
-        total_fetched: fullLyricsList.content.length,
-        ...fullLyricsList,
-      });
-    }
+  oenv = c.env;
+  const trackName = c.req.query('track');
+  const artistName = c.req.query('artist');
+
+  const bulk = c.req.query('bulk') === 'true';
+  let userAccessToken = c.req.header('Authorization');
+  let socalitoken = '1';
+  const forceMxMatch = c.req.query("forcemx") !== "true";
+
+  // Dev mode token generation
+  if (c.env.DEV_MODE === 'true') {
+    const data = await generateToken();
+    userAccessToken = `Bearer ${data.access_token}`;
+    socalitoken = data.access_token;
+  } else {
+    const data2 = await generateToken();
+    socalitoken = data2.access_token;
+  }
+
+  if (!trackName || !artistName) {
+    return c.json({ error: true, details: 'Track or Artist query missing.', status: 403 }, 403);
+  }
+
+  const fetchingUrl = `https://api.spotify.com/v1/search?q=track:${trackName} artist:${artistName}&type=track${!bulk ? '&limit=1' : ''}`;
+  const resp = await fetch(fetchingUrl, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: userAccessToken || 'none',
+    },
   });
+
+  if (resp.status !== 200) {
+    return c.json({ error: true, status: resp.status, details: 'Spotify API Error' }, resp.status);
+  }
+
+  const data = await resp.json();
+  if (data.tracks.total === 0) {
+    return c.json({ error: true, details: 'No Tracks Found', status: 404 }, 404);
+  }
+
+  const processLyrics = async (track) => {
+      const trackId = track.id;
+      let lyrics = null;
+
+      // Check lyrics in DB
+      const dbData = await checkLyricsInDB(trackId, c.env.DB);
+      if (dbData != null) {
+          if (dbData.Type === "Line") {
+              const additData = {
+                  StartTime: dbData.Content[0].StartTime,
+                  EndTime: dbData.Content[dbData.Content.length - 1].EndTime,
+                  ...dbData
+              };
+              lyrics = additData;
+          } else if (dbData.Type === "Syllable") {
+              const additData = {
+                  StartTime: dbData.Content[0].Lead.StartTime,
+                  EndTime: dbData.Content[dbData.Content.length - 1].Lead.EndTime,
+                  ...dbData
+              };
+              lyrics = additData;
+          } else if (dbData.Type === "Static") {
+              lyrics = dbData;
+          }
+      }
+
+      if (!lyrics) {
+          // Fetch lyrics from Beautiful Lyrics API
+          const lyricsResp = await fetch(`https://beautiful-lyrics.socalifornian.live/lyrics/${trackId}`, {
+              method: 'GET',
+              headers: {
+                  'User-Agent': 'insomnia/9.2.0',
+                  Origin: 'https://xpui.app.spotify.com',
+                  Referer: 'https://xpui.app.spotify.com/',
+                  Authorization: `Bearer ${socalitoken}`,
+              },
+          });
+
+          const lyricsResponse = await lyricsResp.text();
+          if (lyricsResp.status === 200 && lyricsResponse !== "") {
+              const fetchedLyrics = JSON.parse(lyricsResponse);
+              const type = fetchedLyrics.Type || null;
+
+              if (!forceMxMatch || type === "Syllable" || type === "Line") {
+                  lyrics = fetchedLyrics;
+              } else {
+                  // If not "Syllable", fallback to Musixmatch
+                  const transformedLyrics = await fetchMusixmatchLyrics(track, c, fetchedLyrics);
+                  if (transformedLyrics.return_status !== 404) {
+                      lyrics = transformedLyrics;
+                  }
+              }
+          }
+      }
+
+      return lyrics ? { 
+          name: track.name, 
+          artists: track.artists, 
+          id: track.id, 
+          ...lyrics 
+      } : null;
+  };
+
+  if (!bulk) {
+    // Single track search
+    const track = data.tracks.items[0];
+    const processedLyrics = await processLyrics(track);
+
+    if (!processedLyrics) {
+      return c.json({ error: true, details: 'Lyrics Not Found', status: 404 }, 404);
+    }
+
+    return c.json(processedLyrics);
+  } else {
+    // Bulk search with 20-track limit and 300ms delay
+    const tracks = data.tracks.items;
+    const fullLyricsList = { error: false, bulk: true, content: [] };
+    
+    // Process only the first 20 tracks, even if more are found
+    const limitedTracks = tracks.slice(0, 20);
+
+    for (let i = 0; i < limitedTracks.length; i++) {
+      const track = limitedTracks[i];
+      const processedLyrics = await processLyrics(track);
+      if (processedLyrics) {
+        fullLyricsList.content.push(processedLyrics);
+      }
+
+      // Wait for 300ms before processing the next request
+      await delay(300);
+    }
+
+    return c.json({
+      total: Math.min(data.tracks.total, 20),
+      total_fetched: fullLyricsList.content.length,
+      ...fullLyricsList,
+    });
+  }
+});
+
   
 app.get('/', (c) => {
   return c.redirect("https://github.com/SpikeNew7774/Lyrjs_CW")
