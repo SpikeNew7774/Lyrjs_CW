@@ -155,7 +155,6 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
       }
     });
     const tokenData = await tokenResponse.json();
-    console.log("TokenData", tokenData);
     return tokenData.message.body.user_token;
   };
 
@@ -180,15 +179,15 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   const trackDuration = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length;
   const subtitleLength = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? null : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_length;
 
-  const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}${subtitleLength != null ? `&f_subtitle_length=${subtitleLength}` : ""}&q_duration=${trackDuration}`;
+  /* const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}${subtitleLength != null ? `&f_subtitle_length=${subtitleLength}` : ""}&q_duration=${trackDuration}`;
   const richsyncRes = await fetch(richsyncUrl, {
     headers: {
       "Origin": "https://xpui.app.spotify.com"
     }
   });
-  const richsyncData = await richsyncRes.json();
+  const richsyncData = await richsyncRes.json(); */
 
-  if (richsyncData?.message?.header?.status_code === 404) {
+  //if (richsyncData?.message?.header?.status_code === 404) {
     if (blData && blData?.Type === "Line") {
       console.log("Using Beautiful-Lyrics data");
       return { blData, from: "bl" };
@@ -222,9 +221,10 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
         Content: transformedContent
       };
     }
-  }
+    return { return_status: 404 }
+  //}
 
-  const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
+  /* const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
 
   const transformedContent = richsyncBody.map(item => {
     let syllables;
@@ -263,7 +263,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
     alternative_api: true,
     commontrack_id: commontrackId,
     Content: transformedContent
-  };
+  }; */
 };
 
 
