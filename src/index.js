@@ -80,7 +80,7 @@ async function rateSearchLimit(c, next) {
 	
   const { success } = await c.env.lyricsSearchRtLimit.limit({ key: ipAddress })
 	if (!success) {
-		return c.json({ error: true, details: 'You\'ve exceeded the rate limit of 1 request per 10 seconds. Wait atleast 10 seconds before an another request', status: 429 }, 429);
+		return c.json({ error: true, details: 'You\'ve exceeded the rate limit of 3 requests per 60 seconds. Wait atleast 10 seconds before an another request', status: 429 }, 429);
 	}
 	return next()
 }
@@ -276,11 +276,11 @@ app.get('/lyrics/id', rateLimit, async (c) => {
   const ids = c.req.query('ids')?.split(',');
 
   if (trackId && ids) {
-    return c.json({ error: true, details: 'You can\'t have a trackId and also ids. Use only one.', status: 403 }, 403);
+    return c.json({ error: true, details: 'You can\'t have a trackId and also ids. Use only one.', status: 400 }, 400);
   }
 
   if (ids?.length > 100) {
-    return c.json({ error: true, details: 'More than 100 tracks can\'t be fetched at one time', status: 403 }, 403);
+    return c.json({ error: true, details: 'More than 100 tracks can\'t be fetched at one time', status: 400 }, 400);
   }
 
   let userAccessToken = c.req.header('Authorization');
@@ -296,7 +296,7 @@ app.get('/lyrics/id', rateLimit, async (c) => {
   }
 
   if (!trackId && !ids) {
-    return c.json({ error: true, details: 'Track ID or IDs missing.', status: 403 }, 403);
+    return c.json({ error: true, details: 'Track ID or IDs missing.', status: 400 }, 400);
   }
 
   const trackIds = trackId ? [trackId] : ids;
@@ -543,7 +543,7 @@ app.get('/lyrics/search', rateSearchLimit, async (c) => {
   }
 
   if (!trackName || !artistName) {
-    return c.json({ error: true, details: 'Track or Artist query missing.', status: 403 }, 403);
+    return c.json({ error: true, details: 'Track or Artist query missing.', status: 400 }, 400);
   }
 
   const fetchingUrl = `https://api.spotify.com/v1/search?q=track:${trackName} artist:${artistName}&type=track${!bulk ? '&limit=1' : ''}`;
