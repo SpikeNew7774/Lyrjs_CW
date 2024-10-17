@@ -1,0 +1,170 @@
+// Musixmatch lyric fetch helper
+const fetchMusixmatchLyrics = async (trackData, c, blData) => {
+  const db = oenv.DB; // Assuming the DB binding is passed in the environment
+  const { name, artists, album, id } = trackData;
+  const artistNames = artists.map(artist => artist.name).join(', ');
+
+  /* // Try to find lyrics in the DB first
+  const existingLyrics = await checkLyricsInDB(id, db);
+  if (existingLyrics) {
+    console.log('Found lyrics in DB, returning...');
+    return existingLyrics; // Return the parsed lyrics if found
+  } */
+
+  // Helper to get Musixmatch URL
+  const getMusixmatchUrl = (token) =>
+    `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/macro.subtitles.get?format=json&namespace=lyrics_richsynched&subtitle_format=mxm&app_id=web-desktop-app-v1.0&q_album=${album.name}&q_artist=${artistNames}&q_track=${name}&track_spotify_id=spotify:track:${id}&usertoken=${token}`;
+
+  // Fetch the token from the D1 DB
+  const getTokenFromDB = async () => {
+    const result = await db.prepare('SELECT token FROM tokens WHERE id = ?').bind('musixmatch').first();
+    return result?.token || null;
+  };
+
+  // Save or update the token in the D1 DB
+  const saveTokenToDB = async (token) => {
+    await db.prepare('INSERT INTO tokens (id, token) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET token = excluded.token')
+      .bind('musixmatch', token).run();
+  };
+
+  // Fetch Musixmatch data helper
+  const fetchMusixmatchData = async (token) => {
+    const response = await fetch(getMusixmatchUrl(token), {
+      method: "GET",
+      redirect: "manual",
+      headers: {
+        "Origin": "https://xpui.app.spotify.com"
+      }
+    });
+
+    if (response.redirected) {
+      console.log('Redirect detected, fetching new token...');
+      const newToken = await fetchNewMusixmatchToken();
+      await saveTokenToDB(newToken);
+      return await fetchMusixmatchData(newToken);
+    }
+
+    return await response.json();
+  };
+
+  // Fetch new Musixmatch token
+  const fetchNewMusixmatchToken = async () => {
+    const tokenResponse = await fetch('https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/token.get?app_id=web-desktop-app-v1.0', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'insomnia/9.2.0',
+        "Origin": "https://xpui.app.spotify.com"
+      }
+    });
+    const tokenData = await tokenResponse.json();
+    return tokenData.message.body.user_token;
+  };
+
+  // Main logic
+  let mx_token = await getTokenFromDB(); // Check if token exists in the DB
+  if (!mx_token) {
+    console.log('No Musixmatch token in DB, fetching new token...');
+    mx_token = await fetchNewMusixmatchToken();
+    await saveTokenToDB(mx_token); // Save new token to the DB
+  }
+
+  let musixmatchData = await fetchMusixmatchData(mx_token);
+
+  if (musixmatchData?.message?.header?.status_code === 401) {
+    console.log('Token expired, fetching new token...');
+    mx_token = await fetchNewMusixmatchToken();
+    await saveTokenToDB(mx_token); // Save new token to the DB
+    musixmatchData = await fetchMusixmatchData(mx_token);
+  }
+
+  const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
+  //const trackDuration = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length;
+  //const subtitleLength = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? null : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_length;
+
+  /* const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}${subtitleLength != null ? `&f_subtitle_length=${subtitleLength}` : ""}&q_duration=${trackDuration}`;
+  const richsyncRes = await fetch(richsyncUrl, {
+    headers: {
+      "Origin": "https://xpui.app.spotify.com"
+    }
+  });
+  const richsyncData = await richsyncRes.json(); */
+
+  //if (richsyncData?.message?.header?.status_code === 404) {
+    /* if (blData && blData?.Type === "Line") {
+      console.log("Using Beautiful-Lyrics data");
+      return { blData, from: "bl" };
+    } */
+
+    if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
+      console.log("No lyrics found in Musixmatch");
+      if (blData && blData?.Type !== "NOTUSE") {
+        console.log("Using Beautiful-Lyrics data");
+        return { blData, from: "bl" };
+      } else {
+        return { return_status: 404 };
+      }
+    }
+
+    const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? {"none": true} : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
+
+    if (subtitles.none !== true) {
+      const transformedContent = subtitles.map((item, index, arr) => ({
+        Text: item.text,
+        StartTime: item.time.total,
+        EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
+        Type: "Vocal",
+        OppositeAligned: false
+      }));
+
+      return {
+        Type: "Line",
+        alternative_api: true,
+        commontrack_id: commontrackId,
+        Content: transformedContent
+      };
+    }
+    return { return_status: 404 }
+  //}
+
+  /* const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
+
+  const transformedContent = richsyncBody.map(item => {
+    let syllables;
+
+    if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
+      syllables = item.l
+        .filter(lyric => lyric.c.trim() !== "")
+        .map(lyric => ({
+          Text: lyric.c,
+          IsPartOfWord: false,
+          StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
+          EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
+        }));
+    } else {
+      syllables = item.l.map(lyric => ({
+        Text: lyric.c,
+        IsPartOfWord: lyric.o !== 0,
+        StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
+        EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
+      }));
+    }
+
+    return {
+      Type: "Vocal",
+      OppositeAligned: false,
+      Lead: {
+        Syllables: syllables,
+        StartTime: item.ts,
+        EndTime: item.te
+      }
+    };
+  });
+
+  return {
+    Type: "Syllable",
+    alternative_api: true,
+    commontrack_id: commontrackId,
+    Content: transformedContent
+  }; */
+};

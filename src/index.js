@@ -176,95 +176,56 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   }
 
   const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
-  const trackDuration = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length;
-  const subtitleLength = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? null : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_length;
 
-  /* const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}${subtitleLength != null ? `&f_subtitle_length=${subtitleLength}` : ""}&q_duration=${trackDuration}`;
-  const richsyncRes = await fetch(richsyncUrl, {
-    headers: {
-      "Origin": "https://xpui.app.spotify.com"
-    }
-  });
-  const richsyncData = await richsyncRes.json(); */
+  // Check if there are synced lyrics
+  if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
+    console.log("No synced lyrics found in Musixmatch");
+    // Check for static lyrics and divide by "\n"
 
-  //if (richsyncData?.message?.header?.status_code === 404) {
-    if (blData && blData?.Type === "Line") {
+    // Fallback to Beautiful-Lyrics if available
+    if (blData && blData?.Type !== "NOTUSE") {
       console.log("Using Beautiful-Lyrics data");
       return { blData, from: "bl" };
-    }
-
-    if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
-      console.log("No lyrics found in Musixmatch");
-      if (blData && blData?.Type !== "NOTUSE") {
-        console.log("Using Beautiful-Lyrics data");
-        return { blData, from: "bl" };
-      } else {
-        return { return_status: 404 };
-      }
-    }
-
-    const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? {"none": true} : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
-
-    if (subtitles.none !== true) {
-      const transformedContent = subtitles.map((item, index, arr) => ({
-        Text: item.text,
-        StartTime: item.time.total,
-        EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
-        Type: "Vocal",
-        OppositeAligned: false
-      }));
-
-      return {
-        Type: "Line",
-        alternative_api: true,
-        commontrack_id: commontrackId,
-        Content: transformedContent
-      };
-    }
-    return { return_status: 404 }
-  //}
-
-  /* const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
-
-  const transformedContent = richsyncBody.map(item => {
-    let syllables;
-
-    if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
-      syllables = item.l
-        .filter(lyric => lyric.c.trim() !== "")
-        .map(lyric => ({
-          Text: lyric.c,
-          IsPartOfWord: false,
-          StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
-          EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
-        }));
     } else {
-      syllables = item.l.map(lyric => ({
-        Text: lyric.c,
-        IsPartOfWord: lyric.o !== 0,
-        StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
-        EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
-      }));
+
+      const staticLyrics = musixmatchData?.message?.body?.macro_calls["track.lyrics.get"]?.message?.body?.lyrics?.lyrics_body;
+      if (staticLyrics) {
+        const lines = staticLyrics.split("\n").map(line => ({
+          Text: line
+        }));
+
+        return {
+          Type: "Static",
+          Lines: lines
+        };
+      }
+
+      return { return_status: 404 };
     }
+  }
+
+  // Process synced lyrics if available
+  const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? {"none": true} : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
+
+  if (subtitles.none !== true) {
+    const transformedContent = subtitles.map((item, index, arr) => ({
+      Text: item.text,
+      StartTime: item.time.total,
+      EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
+      Type: "Vocal",
+      OppositeAligned: false
+    }));
 
     return {
-      Type: "Vocal",
-      OppositeAligned: false,
-      Lead: {
-        Syllables: syllables,
-        StartTime: item.ts,
-        EndTime: item.te
-      }
+      Type: "Line",
+      alternative_api: true,
+      commontrack_id: commontrackId,
+      Content: transformedContent
     };
-  });
-
-  return {
-    Type: "Syllable",
-    alternative_api: true,
-    commontrack_id: commontrackId,
-    Content: transformedContent
-  }; */
+  }
+  return { return_status: 404 };
 };
+
 
 
 
