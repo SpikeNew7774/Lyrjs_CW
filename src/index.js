@@ -86,7 +86,7 @@ async function rateSearchLimit(c, next) {
 }
 
 
-async function rateLyricsDbReadLimit(c, next) {
+/* async function rateLyricsDbReadLimit(c, next) {
 	const ipAddress = c.req.header("cf-connecting-ip")
 	
   const { success } = await c.env.lyricsDbRead.limit({ key: ipAddress })
@@ -94,7 +94,7 @@ async function rateLyricsDbReadLimit(c, next) {
 		return c.json({ error: true, details: 'You\'ve exceeded the rate limit of 1 requests per 60 seconds. Wait atleast 60 seconds before an another request', status: 429 }, 429);
 	}
 	return next()
-}
+} */
 
 // Check for lyrics in the D1 DB by Spotify ID (function outside of fetchMusixmatchLyrics)
 const checkLyricsInDB = async (spotifyId, db) => {
@@ -105,7 +105,7 @@ const checkLyricsInDB = async (spotifyId, db) => {
   return null;
 };
 
-// Check for lyrics in the D1 DB by Spotify ID (function outside of fetchMusixmatchLyrics)
+/* // Check for lyrics in the D1 DB by Spotify ID (function outside of fetchMusixmatchLyrics)
 const checkFullLyricsInDB = async (db) => {
   const result = await db.prepare('SELECT spotify_id, lyrics_content FROM lyrics').all();
   if (result && result?.results?.length > 0) {
@@ -116,7 +116,7 @@ const checkFullLyricsInDB = async (db) => {
     return filteredResult;
   }
   return null;
-};
+}; */
 
 // Musixmatch lyric fetch helper
 const fetchMusixmatchLyrics = async (trackData, c, blData) => {
@@ -655,10 +655,10 @@ app.get('/', (c) => {
   return c.redirect("https://github.com/SpikeNew7774/Lyrjs_CW")
 })
 
-app.get("/open-source/lyricsdb", rateLyricsDbReadLimit, async (c) => {
+/* app.get("/open-source/lyricsdb", rateLyricsDbReadLimit, async (c) => {
   const dbContent = await checkFullLyricsInDB(c.env.DB)
   return c.json(dbContent)
-})
+}) */
 
 
 // Route: /bin
