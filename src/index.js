@@ -80,17 +80,40 @@ async function rateSearchLimit(c, next) {
 	
   const { success } = await c.env.lyricsSearchRtLimit.limit({ key: ipAddress })
 	if (!success) {
-		return c.json({ error: true, details: 'You\'ve exceeded the rate limit of 3 requests per 60 seconds. Wait atleast 10 seconds before an another request', status: 429 }, 429);
+		return c.json({ error: true, details: 'You\'ve exceeded the rate limit of 3 requests per 60 seconds. Wait atleast 60 seconds before an another request', status: 429 }, 429);
 	}
 	return next()
 }
 
+
+async function rateLyricsDbReadLimit(c, next) {
+	const ipAddress = c.req.header("cf-connecting-ip")
+	
+  const { success } = await c.env.lyricsDbRead.limit({ key: ipAddress })
+	if (!success) {
+		return c.json({ error: true, details: 'You\'ve exceeded the rate limit of 1 requests per 60 seconds. Wait atleast 60 seconds before an another request', status: 429 }, 429);
+	}
+	return next()
+}
 
 // Check for lyrics in the D1 DB by Spotify ID (function outside of fetchMusixmatchLyrics)
 const checkLyricsInDB = async (spotifyId, db) => {
   const result = await db.prepare('SELECT lyrics_content FROM lyrics WHERE spotify_id = ?').bind(spotifyId).first();
   if (result && result.lyrics_content) {
     return JSON.parse(result.lyrics_content);
+  }
+  return null;
+};
+
+// Check for lyrics in the D1 DB by Spotify ID (function outside of fetchMusixmatchLyrics)
+const checkFullLyricsInDB = async (db) => {
+  const result = await db.prepare('SELECT spotify_id, lyrics_content FROM lyrics').all();
+  if (result && result?.results?.length > 0) {
+    // Filter out rows where spotify_id starts with "_"
+    const filteredResult = result.results.filter(row => !row.spotify_id.startsWith('_'));
+
+    // Parse the lyrics_content for each row
+    return filteredResult;
   }
   return null;
 };
@@ -630,6 +653,11 @@ app.get('/lyrics/search', rateSearchLimit, async (c) => {
   
 app.get('/', (c) => {
   return c.redirect("https://github.com/SpikeNew7774/Lyrjs_CW")
+})
+
+app.get("/open-source/lyricsdb", rateLyricsDbReadLimit, async (c) => {
+  const dbContent = await checkFullLyricsInDB(c.env.DB)
+  return c.json(dbContent)
 })
 
 
