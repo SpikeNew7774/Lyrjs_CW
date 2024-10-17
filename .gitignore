@@ -174,6 +174,7 @@ wrangler.toml
 
 script.js
 src/index.js_backup
+src/index.js_fetchmusixmatchLyricsBackup
 src/idk
 temp/
 lyrics_builder/

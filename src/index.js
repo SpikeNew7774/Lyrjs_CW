@@ -196,7 +196,9 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 
         return {
           Type: "Static",
-          Lines: lines
+          Lines: lines,
+          alternative_api: true,
+          commontrack_id: commontrackId
         };
       }
 
