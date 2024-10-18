@@ -199,7 +199,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   }
 
   const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
-  const trackDuration = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length;
+  /* const trackDuration = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length;
   const subtitleLength = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? null : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_length;
 
   const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}${subtitleLength != null ? `&f_subtitle_length=${subtitleLength}` : ""}&q_duration=${trackDuration}`;
@@ -216,15 +216,13 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
     if (blData && blData?.Type === "Line") {
       console.log("Using Beautiful-Lyrics data");
       return { blData, from: "bl" };
-    }
+    } */
 
     if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
       console.log("No lyrics found in Musixmatch");
       if (blData && blData?.Type !== "NOTUSE") {
         console.log("Using Beautiful-Lyrics data");
         return { blData, from: "bl" };
-      } else {
-        return { return_status: 404 };
       }
     }
 
@@ -260,14 +258,14 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
         };
       }
     return { return_status: 404 }
-  }
+  /* }
 
   const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
 
   const transformedContent = richsyncBody.map(item => {
     let syllables;
 /*     console.log("Start Time", parseFloat((item.ts + item.l[0].o).toFixed(3)))
-    console.log("End Time", parseFloat((item.ts + item.l[0].o + (item.te - item.ts) / item.l.length).toFixed(3))); */
+    console.log("End Time", parseFloat((item.ts + item.l[0].o + (item.te - item.ts) / item.l.length).toFixed(3))); 
 
     if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
       syllables = item.l
@@ -303,7 +301,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
     alternative_api: true,
     commontrack_id: commontrackId,
     Content: transformedContent
-  };
+  }; */
 };
 
 
