@@ -199,18 +199,53 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
   }
 
   const commontrackId = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.commontrack_id;
+  const trackDuration = musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length;
+  const subtitleLength = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? null : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_length;
 
-  // Check if there are synced lyrics
-  if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
-    console.log("No synced lyrics found in Musixmatch");
-    // Check for static lyrics and divide by "\n"
+  const richsyncUrl = `https://cors-proxy.spicetify.app/https://apic-desktop.musixmatch.com/ws/1.1/track.richsync.get?format=json&subtitle_format=mxm&app_id=web-desktop-app-v1.0&commontrack_id=${commontrackId}&usertoken=${mx_token}${subtitleLength != null ? `&f_subtitle_length=${subtitleLength}` : ""}&q_duration=${trackDuration}`;
+  const richsyncRes = await fetch(richsyncUrl, {
+    headers: {
+      "Origin": "https://xpui.app.spotify.com"
+    }
+  });
+  const richsyncData = await richsyncRes.json();
+  console.log(richsyncData?.message?.header?.status_code)
+  console.log(richsyncData?.message?.header?.status_code === 404)
 
-    // Fallback to Beautiful-Lyrics if available
-    if (blData && blData?.Type !== "NOTUSE") {
+  if (richsyncData?.message?.header?.status_code === 404) {
+    if (blData && blData?.Type === "Line") {
       console.log("Using Beautiful-Lyrics data");
       return { blData, from: "bl" };
-    } else {
+    }
 
+    if (musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? true : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.header?.status_code !== 200) {
+      console.log("No lyrics found in Musixmatch");
+      if (blData && blData?.Type !== "NOTUSE") {
+        console.log("Using Beautiful-Lyrics data");
+        return { blData, from: "bl" };
+      } else {
+        return { return_status: 404 };
+      }
+    }
+
+    const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? {"none": true} : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
+
+    if (subtitles.none !== true) {
+      const transformedContent = subtitles.map((item, index, arr) => ({
+        Text: item.text,
+        StartTime: item.time.total,
+        EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
+        Type: "Vocal",
+        OppositeAligned: false
+      }));
+
+      return {
+        Type: "Line",
+        alternative_api: true,
+        commontrack_id: commontrackId,
+        Content: transformedContent
+      };
+    }
       const staticLyrics = musixmatchData?.message?.body?.macro_calls["track.lyrics.get"]?.message?.body?.lyrics?.lyrics_body;
       if (staticLyrics) {
         const lines = staticLyrics.split("\n").map(line => ({
@@ -224,31 +259,51 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
           commontrack_id: commontrackId
         };
       }
-
-      return { return_status: 404 };
-    }
+    return { return_status: 404 }
   }
 
-  // Process synced lyrics if available
-  const subtitles = JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? {"none": true} : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body);
+  const richsyncBody = JSON.parse(richsyncData.message.body.richsync.richsync_body);
 
-  if (subtitles.none !== true) {
-    const transformedContent = subtitles.map((item, index, arr) => ({
-      Text: item.text,
-      StartTime: item.time.total,
-      EndTime: index !== arr.length - 1 ? arr[index + 1].time.total : musixmatchData.message.body.macro_calls["matcher.track.get"].message.body.track.track_length,
-      Type: "Vocal",
-      OppositeAligned: false
-    }));
+  const transformedContent = richsyncBody.map(item => {
+    let syllables;
+/*     console.log("Start Time", parseFloat((item.ts + item.l[0].o).toFixed(3)))
+    console.log("End Time", parseFloat((item.ts + item.l[0].o + (item.te - item.ts) / item.l.length).toFixed(3))); */
+
+    if (c.req.header("Origin") === "https://xpui.app.spotify.com") {
+      syllables = item.l
+        .filter(lyric => lyric.c.trim() !== "")
+        .map((lyric, index, arr) => ({
+          Text: lyric.c,
+          IsPartOfWord: false,
+          StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
+          EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
+        }));
+    } else {
+      syllables = item.l.map((lyric, index, arr) => ({
+        Text: lyric.c,
+        IsPartOfWord: false,
+        StartTime: parseFloat((item.ts + lyric.o).toFixed(3)),
+        EndTime: parseFloat((item.ts + lyric.o + (item.te - item.ts) / item.l.length).toFixed(3))
+      }));
+    }
 
     return {
-      Type: "Line",
-      alternative_api: true,
-      commontrack_id: commontrackId,
-      Content: transformedContent
+      Type: "Vocal",
+      OppositeAligned: false,
+      Lead: {
+        Syllables: syllables,
+        StartTime: item.ts,
+        EndTime: item.te
+      }
     };
-  }
-  return { return_status: 404 };
+  });
+
+  return {
+    Type: "Syllable",
+    alternative_api: true,
+    commontrack_id: commontrackId,
+    Content: transformedContent
+  };
 };
 
 
@@ -257,7 +312,7 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
 // Route: /lyrics/id (with multiple IDs support)
 app.get('/lyrics/id', rateLimit, async (c) => {
   oenv = c.env;
-  const forceMxMatch = c.req.query("forcemx") !== "true";
+  const forceMxMatch = false;//c.req.query("forcemx") !== "true";
   const trackId = c.req.query('id');
   const ids = c.req.query('ids')?.split(',');
 
