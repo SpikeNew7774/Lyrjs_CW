@@ -58,7 +58,7 @@ const rateLimitSkiplist = [
 ];
 
 async function rateLimit(c, next) {
-  if (c.req.header("Origin") && rateLimitSkiplist.includes(c.req.header("Origin"))) {
+  if (c.req.header("splay-private-token") ? c.req.header("splay-private-token") === c.env.SPLAY_PRIVATE_TOKEN : c.req.header("Origin") && rateLimitSkiplist.includes(c.req.header("Origin"))) {
     return next()
   }
 
@@ -72,7 +72,7 @@ async function rateLimit(c, next) {
 }
 
 async function rateSearchLimit(c, next) {
-  if (c.req.header("Origin") && rateLimitSkiplist.includes(c.req.header("Origin"))) {
+  if (c.req.header("splay-private-token") ? c.req.header("splay-private-token") === c.env.SPLAY_PRIVATE_TOKEN : c.req.header("Origin") && rateLimitSkiplist.includes(c.req.header("Origin"))) {
     return next()
   }
 
