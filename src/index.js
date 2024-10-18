@@ -226,7 +226,13 @@ const fetchMusixmatchLyrics = async (trackData, c, blData) => {
       }
     }
 
-    const subtitles = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? {"none": true} : musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body;
+    let subtitles;
+
+    try {
+      subtitles = musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message.body == "" ? {"none": true} : JSON.parse(musixmatchData?.message?.body?.macro_calls["track.subtitles.get"]?.message?.body?.subtitle_list[0]?.subtitle?.subtitle_body)
+    } catch (error) {
+      return { return_status: 404 }
+    }
 
     if (subtitles.none !== true) {
       const transformedContent = subtitles.map((item, index, arr) => ({
