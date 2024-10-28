@@ -105,6 +105,15 @@ const checkLyricsInDB = async (spotifyId, db) => {
   return null;
 };
 
+
+const checkLyricsFontsInDB = async (spotifyId, db) => {
+  const result = await db.prepare('SELECT lyrics_font_data FROM lyrics_fonts WHERE spotify_id = ?').bind(spotifyId).first();
+  if (result && result.lyrics_font_data) {
+    return JSON.parse(result.lyrics_font_data);
+  }
+  return null;
+};
+
 /* // Check for lyrics in the D1 DB by Spotify ID (function outside of fetchMusixmatchLyrics)
 const checkFullLyricsInDB = async (db) => {
   const result = await db.prepare('SELECT spotify_id, lyrics_content FROM lyrics').all();
@@ -373,12 +382,22 @@ app.get('/lyrics/id', rateLimit, async (c) => {
           ...dbData
         }
 
-        fullLyricsList.content.push({
+        const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+        const pushContent = customFonts ? {
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          font: customFonts,
+          ...additData
+        } : {
           name: data.name,
           artists: data.artists,
           id: data.id,
           ...additData
-        });
+        }
+
+        fullLyricsList.content.push(pushContent);
       } else if (dbData.Type === "Syllable") {
         const additData = {
             StartTime: dbData.Content[0].Lead.StartTime,
@@ -386,23 +405,43 @@ app.get('/lyrics/id', rateLimit, async (c) => {
             ...dbData
         }
 
-        fullLyricsList.content.push({
+        const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+        const pushContent = customFonts ? {
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          font: customFonts,
+          ...additData
+        } : {
           name: data.name,
           artists: data.artists,
           id: data.id,
           ...additData
-        });
+        }
+
+        fullLyricsList.content.push(pushContent);
       } else if (dbData.Type === "Static") {
         const additData = {
           ...dbData
         }
 
-        fullLyricsList.content.push({
+        const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+        const pushContent = customFonts ? {
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          font: customFonts,
+          ...additData
+        } : {
           name: data.name,
           artists: data.artists,
           id: data.id,
           ...additData
-        });
+        }
+
+        fullLyricsList.content.push(pushContent);
       }
       if (c.req.query("ids")) {
         return c.json({
@@ -436,13 +475,25 @@ app.get('/lyrics/id', rateLimit, async (c) => {
 
       if (blCheck) { // Changed my Mind: || type === "Line"
         // If Beautiful-Lyrics has "Syllable", just use it
-        fullLyricsList.content.push({
+
+        const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+        const pushContent = customFonts ? {
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          alternative_api: false,
+          font: customFonts,
+          ...lyrics,
+        } : {
           name: data.name,
           artists: data.artists,
           id: data.id,
           alternative_api: false,
           ...lyrics,
-        });
+        }
+
+        fullLyricsList.content.push(pushContent);
       } else {
         // If not "Syllable", fallback to Musixmatch
         const transformedLyrics = await fetchMusixmatchLyrics(data, c, JSON.parse(lyricsResponse));
@@ -460,12 +511,22 @@ app.get('/lyrics/id', rateLimit, async (c) => {
             ...transformedLyrics
           } : { ...transformedLyrics.blData, alternative_api: false }
 
-          fullLyricsList.content.push({
+          const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+          const pushContent = customFonts ? {
+            name: data.name,
+            artists: data.artists,
+            id: data.id,
+            font: customFonts,
+            ...additData
+          } : {
             name: data.name,
             artists: data.artists,
             id: data.id,
             ...additData
-          });
+          }
+
+          fullLyricsList.content.push(pushContent);
         } else if (transformedLyrics.Type === "Syllable" || transformedLyrics?.blData?.Type === "Syllable") {
           const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
               StartTime: transformedLyrics.Content[0].Lead.StartTime,
@@ -473,23 +534,43 @@ app.get('/lyrics/id', rateLimit, async (c) => {
               ...transformedLyrics
           } : { ...transformedLyrics.blData, alternative_api: false }
 
-          fullLyricsList.content.push({
+          const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+          const pushContent = customFonts ? {
+            name: data.name,
+            artists: data.artists,
+            id: data.id,
+            font: customFonts,
+            ...additData
+          } : {
             name: data.name,
             artists: data.artists,
             id: data.id,
             ...additData
-          });
+          }
+
+          fullLyricsList.content.push(pushContent);
         } else if (transformedLyrics.Type === "Static" || transformedLyrics?.blData?.Type === "Static") {
           const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
             ...transformedLyrics
           } : { ...transformedLyrics.blData, alternative_api: false }
 
-          fullLyricsList.content.push({
+          const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+          const pushContent = customFonts ? {
+            name: data.name,
+            artists: data.artists,
+            id: data.id,
+            font: customFonts,
+            ...additData
+          } : {
             name: data.name,
             artists: data.artists,
             id: data.id,
             ...additData
-          });
+          }
+
+          fullLyricsList.content.push(pushContent);
         }
       }
     } else {
@@ -516,12 +597,22 @@ app.get('/lyrics/id', rateLimit, async (c) => {
           ...transformedLyrics
         } : { ...transformedLyrics.blData, alternative_api: false }
 
-        fullLyricsList.content.push({
+        const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+        const pushContent = customFonts ? {
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          font: customFonts,
+          ...additData
+        } : {
           name: data.name,
           artists: data.artists,
           id: data.id,
           ...additData
-        });
+        }
+
+        fullLyricsList.content.push(pushContent);
       } else if (transformedLyrics.Type === "Syllable" || transformedLyrics?.blData?.Type === "Syllable") {
         const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
             StartTime: transformedLyrics.Content[0].Lead.StartTime,
@@ -529,23 +620,43 @@ app.get('/lyrics/id', rateLimit, async (c) => {
             ...transformedLyrics
         } : { ...transformedLyrics.blData, alternative_api: false }
 
-        fullLyricsList.content.push({
+        const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+        const pushContent = customFonts ? {
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          font: customFonts,
+          ...additData
+        } : {
           name: data.name,
           artists: data.artists,
           id: data.id,
           ...additData
-        });
+        }
+
+        fullLyricsList.content.push(pushContent);
       } else if (transformedLyrics.Type === "Static" || transformedLyrics?.blData?.Type === "Static") {
         const additData = !transformedLyrics?.from && transformedLyrics?.from !== "bl" ? {
           ...transformedLyrics
         } : { ...transformedLyrics.blData, alternative_api: false }
 
-        fullLyricsList.content.push({
+        const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+        const pushContent = customFonts ? {
+          name: data.name,
+          artists: data.artists,
+          id: data.id,
+          font: customFonts,
+          ...additData
+        } : {
           name: data.name,
           artists: data.artists,
           id: data.id,
           ...additData
-        });
+        }
+
+        fullLyricsList.content.push(pushContent);
       }
     }
 
@@ -664,12 +775,24 @@ app.get('/lyrics/search', rateSearchLimit, async (c) => {
           }
       }
 
-      return lyrics ? { 
-          name: track.name, 
-          artists: track.artists, 
-          id: track.id, 
-          ...lyrics 
-      } : null;
+      if (!lyrics) return null
+
+      const customFonts = await checkLyricsFontsInDB(data.id, c.env.DB)
+
+      const returnContent = customFonts ? { 
+        name: track.name, 
+        artists: track.artists, 
+        id: track.id,
+        font: customFonts,
+        ...lyrics 
+      } : { 
+        name: track.name, 
+        artists: track.artists, 
+        id: track.id, 
+        ...lyrics 
+      } 
+
+      return returnContent
   };
 
   if (!bulk) {
